@@ -1,10 +1,9 @@
 import { Message } from 'discord.js';
 import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.js';
+import { isFiveAmChannel, getGuildTimezone } from '../db/guildSettings.js';
 import { isPresenceTime } from '../utils/time.js';
 import { getRandomPresenceQuote } from '../utils/quotes.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
-
-const FIVEAM_CHANNEL_ID = process.env.FIVEAM_CHANNEL_ID;
 
 /**
  * Handle message-based presence recording
@@ -16,21 +15,23 @@ export async function handleMessagePresence(message: Message): Promise<void> {
     return;
   }
 
-  // Check if message is in the 5AM channel
-  if (!isInFiveAmChannel(message.channelId)) {
-    return;
-  }
+  const { guildId, channelId, author } = message;
 
-  // Check if it's the right time (5AM - 6AM, Monday to Friday)
-  const timeCheck = isPresenceTime();
-  if (!timeCheck.isValid) {
-    return; // Silently ignore messages outside presence window
-  }
-
-  const { author, guildId } = message;
-  
   if (!guildId) {
     return;
+  }
+
+  // Check if message is in the configured 5AM channel (from database)
+  const isConfiguredChannel = await isFiveAmChannel(guildId, channelId);
+  if (!isConfiguredChannel) {
+    return;
+  }
+
+  // Get guild's timezone and check if it's the right time
+  const timezone = await getGuildTimezone(guildId);
+  const timeCheck = isPresenceTime(timezone);
+  if (!timeCheck.isValid) {
+    return; // Silently ignore messages outside presence window
   }
 
   // Check if already recorded today (via message or /present)
@@ -49,13 +50,6 @@ export async function handleMessagePresence(message: Message): Promise<void> {
   } catch (error) {
     console.error('Error recording message presence:', error);
   }
-}
-
-function isInFiveAmChannel(channelId: string): boolean {
-  if (!FIVEAM_CHANNEL_ID) {
-    return false; // Require channel to be configured for message presence
-  }
-  return channelId === FIVEAM_CHANNEL_ID;
 }
 
 async function sendPresenceFeedback(message: Message, streak: number): Promise<void> {
@@ -92,4 +86,3 @@ function buildFeedbackMessage(
     `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
   );
 }
-

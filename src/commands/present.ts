@@ -1,10 +1,9 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.js';
+import { getFiveAmChannelId, getGuildTimezone } from '../db/guildSettings.js';
 import { isPresenceTime } from '../utils/time.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
 import { getRandomPresenceQuote } from '../utils/quotes.js';
-
-const FIVEAM_CHANNEL_ID = process.env.FIVEAM_CHANNEL_ID;
 
 export const data = new SlashCommandBuilder()
   .setName('present')
@@ -18,15 +17,31 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  if (!isCorrectChannel(channelId)) {
+  // Check if 5AM channel is configured for this guild
+  const fiveAmChannelId = await getFiveAmChannelId(guildId);
+  
+  if (!fiveAmChannelId) {
     await replyError(
       interaction,
-      `❌ **Wrong channel!**\n\nYou can only use \`/present\` in <#${FIVEAM_CHANNEL_ID}>`
+      '❌ **5AM Club not configured!**\n\n' +
+      'An administrator needs to set up the 5AM channel first.\n' +
+      'Use `/setup channel #channel-name` to configure.'
     );
     return;
   }
 
-  const timeCheck = isPresenceTime();
+  if (channelId !== fiveAmChannelId) {
+    await replyError(
+      interaction,
+      `❌ **Wrong channel!**\n\nYou can only use \`/present\` in <#${fiveAmChannelId}>`
+    );
+    return;
+  }
+
+  // Get guild's timezone and check if it's the right time
+  const timezone = await getGuildTimezone(guildId);
+  const timeCheck = isPresenceTime(timezone);
+  
   if (!timeCheck.isValid) {
     await replyError(interaction, buildTimeErrorMessage(timeCheck.reason, timeCheck.hint));
     return;
@@ -55,13 +70,6 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       '❌ Something went wrong while recording your presence. Please try again!'
     );
   }
-}
-
-function isCorrectChannel(channelId: string): boolean {
-  if (!FIVEAM_CHANNEL_ID) {
-    return true; // No restriction if not configured
-  }
-  return channelId === FIVEAM_CHANNEL_ID;
 }
 
 async function replyError(interaction: ChatInputCommandInteraction, message: string): Promise<void> {
@@ -95,13 +103,13 @@ function buildTimeErrorMessage(reason: string | undefined, hint: string | undefi
   return `⏰ **Not the right time!**\n\n${reason}\n\n${hintText}`;
 }
 
-function buildSuccessMessage(username: string, userId: string, streak: number): string {
+function buildSuccessMessage(username: string, oderId: string, streak: number): string {
   const quote = getRandomPresenceQuote();
   const streakEmoji = getStreakEmoji(streak);
   const dayWord = pluralizeDays(streak);
   
   return (
-    `🌅 **${username}** present today @5AM Club! <@${userId}>\n\n` +
+    `🌅 **${username}** present today @5AM Club! <@${oderId}>\n\n` +
     `${quote}\n\n` +
     `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
   );

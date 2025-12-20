@@ -4,11 +4,13 @@ import 'dotenv/config';
 import * as present from './commands/present.js';
 import * as leaderboard from './commands/leaderboard.js';
 import * as stats from './commands/stats.js';
+import * as setup from './commands/setup.js';
 
 const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
   present.data.toJSON(),
   leaderboard.data.toJSON(),
   stats.data.toJSON(),
+  setup.data.toJSON(),
 ];
 
 const token = process.env.DISCORD_TOKEN;
@@ -55,4 +57,3 @@ async function deployCommands(): Promise<void> {
 }
 
 deployCommands();
-

@@ -1,11 +1,20 @@
-import { Client, Collection, Events, GatewayIntentBits, ChatInputCommandInteraction } from 'discord.js';
+import { 
+  Client, 
+  Collection, 
+  Events, 
+  GatewayIntentBits, 
+  ChatInputCommandInteraction,
+  AutocompleteInteraction 
+} from 'discord.js';
 import 'dotenv/config';
 
 import * as present from './commands/present.js';
 import * as leaderboard from './commands/leaderboard.js';
 import * as stats from './commands/stats.js';
+import * as setup from './commands/setup.js';
 import { startScheduler } from './scheduler.js';
 import { handleMessagePresence } from './handlers/messagePresence.js';
+import { getCommonTimezones, getTimezoneDisplay } from './utils/time.js';
 import type { Command } from './types/index.js';
 
 // Extend Client type to include commands collection
@@ -29,6 +38,7 @@ client.commands = new Collection<string, Command>();
 client.commands.set(present.data.name, present);
 client.commands.set(leaderboard.data.name, leaderboard);
 client.commands.set(stats.data.name, stats);
+client.commands.set(setup.data.name, setup);
 
 // Ready event
 client.once(Events.ClientReady, (readyClient) => {
@@ -36,8 +46,8 @@ client.once(Events.ClientReady, (readyClient) => {
   console.log('🌅 5AM Club Bot is online!');
   console.log(`📛 Logged in as: ${readyClient.user.tag}`);
   console.log(`🏠 Serving ${readyClient.guilds.cache.size} guild(s)`);
-  console.log(`⏰ Timezone: ${process.env.TIMEZONE || 'Asia/Jakarta'}`);
   console.log('📨 Message presence detection: ENABLED');
+  console.log('⚙️ Config: Per-guild (channel + timezone)');
   console.log('━'.repeat(50));
   
   // Start the scheduler for daily leaderboard announcements
@@ -58,8 +68,15 @@ client.on(Events.MessageCreate, async (message) => {
   await handleMessagePresence(message);
 });
 
-// Interaction handler for slash commands
+// Interaction handler for slash commands and autocomplete
 client.on(Events.InteractionCreate, async (interaction) => {
+  // Handle autocomplete
+  if (interaction.isAutocomplete()) {
+    await handleAutocomplete(interaction);
+    return;
+  }
+
+  // Handle slash commands
   if (!interaction.isChatInputCommand()) return;
   
   const command = client.commands.get(interaction.commandName);
@@ -76,6 +93,27 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await handleCommandError(interaction);
   }
 });
+
+async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
+  if (interaction.commandName !== 'setup') return;
+  
+  const focusedOption = interaction.options.getFocused(true);
+  
+  if (focusedOption.name === 'timezone') {
+    const searchValue = focusedOption.value.toLowerCase();
+    const timezones = getCommonTimezones();
+    
+    const filtered = timezones
+      .filter(tz => tz.toLowerCase().includes(searchValue))
+      .slice(0, 25)
+      .map(tz => ({
+        name: getTimezoneDisplay(tz),
+        value: tz
+      }));
+    
+    await interaction.respond(filtered);
+  }
+}
 
 async function handleCommandError(interaction: ChatInputCommandInteraction): Promise<void> {
   const errorMessage = {

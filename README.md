@@ -4,13 +4,41 @@ A Discord bot for tracking early morning presence. Members can check in between 
 
 ## Features
 
+- **Admin Setup** - Admins configure channel + timezone per server (nothing in .env!)
 - **Message Presence** - Any message in the 5AM channel counts as presence!
 - **`/present`** - Manual presence command (also works)
 - **`/leaderboard`** - View all-time total leaderboard
 - **`/stats`** - View your streak and personal statistics
+- **`/setup`** - Admin command to configure the bot
+- **`/setup test`** - Test mode to verify setup anytime!
 - **Streak Tracking** - Counts consecutive weekdays you've been present
-- **Auto Announcements** - Daily streak leaderboard posted at 6 AM
+- **Auto Announcements** - Daily streak leaderboard in configured channel at 6 AM
 - **50 Motivational Quotes** - Random feedback when you check in
+
+## Quick Start for Admins
+
+After inviting the bot, an administrator needs to configure it:
+
+```
+/setup channel #5am-club
+/setup timezone Asia/Jakarta
+```
+
+That's it! The bot will now:
+- Track presence in that channel (5:00-5:59 AM, Mon-Fri)
+- Post streak leaderboard there at 6:00 AM
+- Use your server's timezone
+
+## Testing the Bot (Preview Mode)
+
+Want to test without waiting until 5 AM? Admins can use:
+
+```
+/setup test Presence         → Preview what presence looks like
+/setup test Leaderboard      → Preview the 6 AM announcement
+```
+
+✅ **Safe:** Preview mode doesn't record any data — test as many times as you want!
 
 ## How Presence Works
 
@@ -30,6 +58,35 @@ A Discord bot for tracking early morning presence. Members can check in between 
 |-------------|------|---------------|
 | 🔥 **Streak** | Auto at 6 AM (Mon-Fri) | Consecutive day streaks |
 | 👑 **Total** | `/leaderboard` command | All-time total days present |
+
+## Commands
+
+### `/setup` (Admin only)
+Configure the 5AM Club bot for your server.
+
+| Subcommand | Description |
+|------------|-------------|
+| `/setup channel #channel` | Set the 5AM Club channel |
+| `/setup timezone America/New_York` | Set server timezone |
+| `/setup test Presence` | Preview presence message (no data saved) |
+| `/setup test Leaderboard` | Preview 6 AM announcement |
+| `/setup status` | View current configuration |
+| `/setup remove` | Remove configuration (disable bot) |
+
+### `/present`
+Record your presence for the 5AM Club.
+
+- ⏰ Only works between **5:00 AM - 5:59 AM**
+- 📅 Only available **Monday - Friday**
+- 📍 Only works in the configured **5AM Club channel**
+- ✅ One check-in per day
+- 🔥 Shows your current streak + motivational quote
+
+### `/leaderboard`
+View the all-time total leaderboard (top 10).
+
+### `/stats [user]`
+View your statistics or another user's stats.
 
 ## Prerequisites
 
@@ -69,106 +126,49 @@ Permission integer: `277025442816`
 ### 4. Configure Environment
 
 ```bash
-# Copy the example environment file
 cp env.example .env
 ```
 
-Edit `.env` with your values:
+Edit `.env`:
 
 ```env
-# Discord Bot Configuration
 DISCORD_TOKEN=your_discord_bot_token
 DISCORD_CLIENT_ID=your_application_client_id
 DISCORD_GUILD_ID=your_server_id
 
-# Database
 DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
-
-# Timezone (default: Asia/Jakarta / GMT+7)
-TIMEZONE=Asia/Jakarta
-
-# 5AM Club Channel (required - presence only counted here)
-FIVEAM_CHANNEL_ID=your_5am_club_channel_id
-
-# Leaderboard announcements (optional - defaults to FIVEAM_CHANNEL_ID)
-LEADERBOARD_CHANNEL_ID=your_channel_id
 ```
+
+> **Note:** Channel and timezone are configured per-server via `/setup` command, not in .env!
 
 ### 5. Install & Run
 
 ```bash
-# Install dependencies
 npm install
-
-# Build TypeScript
 npm run build
-
-# Run database migrations
 npm run migrate
-
-# Deploy slash commands to Discord
 npm run deploy-commands
-
-# Start the bot
 npm start
 ```
 
-## Commands
+### 6. Configure in Discord
 
-### `/present`
-Record your presence for the 5AM Club.
+Have an admin run:
+```
+/setup channel #your-5am-channel
+/setup timezone Asia/Jakarta
+```
 
-- ⏰ Only works between **5:00 AM - 5:59 AM**
-- 📅 Only available **Monday - Friday**
-- 📍 Only works in the designated **5AM Club channel**
-- ✅ One check-in per day
-- 🔥 Shows your current streak + motivational quote
-
-### `/leaderboard`
-View the all-time total leaderboard.
-
-Shows top 10 members ranked by total days present.
-
-### `/stats [user]`
-View your statistics or another user's stats.
-
-- 🔥 Current streak (consecutive weekdays)
-- 🔢 Total days present
-- 📅 First and last check-in dates
-
-## Message Presence Detection
-
-The bot watches the 5AM Club channel during the presence window (5:00-5:59 AM, Mon-Fri). When you send any message:
-
-1. Bot checks if you're already present today
-2. If not, records your presence
-3. Replies with a motivational quote and your streak
-
-**Example response:**
-> ✅ **username** is present!
-> 
-> 🌅 The world belongs to those who wake up early!
-> 
-> 🔥 Current streak: **5** days 🔥
-
-## How Streaks Work
-
-- Counts **consecutive weekdays** (Mon-Fri) you've been present
-- Weekends are skipped automatically (won't break your streak)
-- Miss one weekday = streak resets to 0
-- Example: Present Mon, Tue, Wed = 3 day streak
-
-## Automatic Features
-
-### 6 AM Daily Summary
-Every weekday at 6:00 AM, the bot automatically posts:
-- 📋 Today's early risers (who checked in)
-- 🔥 Streak leaderboard (consecutive days)
-- 💬 Motivational quote
+**Preview to verify it works:**
+```
+/setup test Presence      ← See what presence looks like
+/setup test Leaderboard   ← See what 6 AM announcement looks like
+```
 
 ## Database Schema
 
 ```sql
+-- Presence records
 presence_records
 ├── id (PRIMARY KEY)
 ├── user_id (VARCHAR)
@@ -177,8 +177,17 @@ presence_records
 ├── present_at (TIMESTAMP)
 ├── present_date (DATE)
 └── created_at (TIMESTAMP)
-
 UNIQUE(user_id, guild_id, present_date)
+
+-- Guild settings (per-server configuration)
+guild_settings
+├── id (PRIMARY KEY)
+├── guild_id (VARCHAR, UNIQUE)
+├── fiveam_channel_id (VARCHAR)
+├── timezone (VARCHAR, default: Asia/Jakarta)
+├── setup_by_user_id (VARCHAR)
+├── setup_at (TIMESTAMP)
+└── updated_at (TIMESTAMP)
 ```
 
 ## Auto Start/Stop with PM2
@@ -190,16 +199,9 @@ The bot is configured to:
 ### Setup PM2
 
 ```bash
-# Install PM2 globally
 npm install -g pm2
-
-# Start the bot with PM2
 npm run pm2:start
-
-# Save PM2 process list (survives server reboot)
 pm2 save
-
-# Setup PM2 to start on system boot
 pm2 startup
 ```
 
@@ -218,57 +220,54 @@ npm run pm2:status   # Check status
 | Time | Action |
 |------|--------|
 | 4:45 AM | Bot starts (PM2 cron) |
-| 5:00 - 5:59 AM | Presence window open (message or /present) |
-| 6:00 AM | Streak leaderboard announcement |
+| 5:00 - 5:59 AM | Presence window open |
+| 6:00 AM | Streak leaderboard in configured channel |
 | 6:15 AM | Bot shuts down |
-
-> **Note:** PM2 uses system timezone. Make sure your server's timezone matches `TIMEZONE` in `.env`, or set `TZ` environment variable.
-
-## Development
-
-```bash
-# Run with auto-reload (TypeScript)
-npm run dev
-
-# Type check without building
-npx tsc --noEmit
-```
 
 ## Project Structure
 
 ```
 src/
-├── index.ts           # Main bot entry
-├── scheduler.ts       # Cron jobs (6AM announcement, 6:15AM shutdown)
-├── deploy-commands.ts # Deploy slash commands
+├── index.ts              # Main bot entry
+├── scheduler.ts          # Cron jobs
+├── deploy-commands.ts    # Deploy slash commands
 ├── commands/
-│   ├── present.ts     # /present command
-│   ├── leaderboard.ts # /leaderboard command
-│   └── stats.ts       # /stats command
+│   ├── present.ts        # /present command
+│   ├── leaderboard.ts    # /leaderboard command
+│   ├── stats.ts          # /stats command
+│   └── setup.ts          # /setup command (admin + test)
 ├── handlers/
-│   └── messagePresence.ts  # Message-based presence detection
+│   └── messagePresence.ts # Message-based presence
 ├── db/
-│   ├── connection.ts  # Neon PostgreSQL connection
-│   ├── migrate.ts     # Database migrations
-│   └── queries.ts     # Database queries + streak calculation
+│   ├── connection.ts     # Database connection
+│   ├── migrate.ts        # Migrations
+│   ├── queries.ts        # Presence queries
+│   └── guildSettings.ts  # Guild settings queries
 ├── utils/
-│   ├── time.ts        # Time utilities (5-6AM check, timezone)
-│   ├── emoji.ts       # Emoji & message formatting
-│   ├── channel.ts     # Channel finding utilities
-│   └── quotes.ts      # 50 motivational quotes
+│   ├── time.ts           # Time utilities
+│   ├── emoji.ts          # Emoji formatting
+│   └── quotes.ts         # 50 motivational quotes
 └── types/
-    └── index.ts       # TypeScript type definitions
+    └── index.ts          # TypeScript types
 ```
 
-## Timezone Configuration
+## Per-Server Timezone
 
-The bot uses `TIMEZONE` environment variable for all time calculations. Default is `Asia/Jakarta` (WIB/UTC+7).
+Each server can have its own timezone! Configure with:
 
-Common timezone values:
+```
+/setup timezone Asia/Jakarta
+```
+
+Available timezones (use autocomplete for full list):
 - `Asia/Jakarta` - WIB (UTC+7)
+- `Asia/Makassar` - WITA (UTC+8)
+- `Asia/Jayapura` - WIT (UTC+9)
 - `Asia/Singapore` - SGT (UTC+8)
+- `Asia/Tokyo` - JST (UTC+9)
 - `America/New_York` - EST/EDT
 - `Europe/London` - GMT/BST
+- `America/Los_Angeles` - PST/PDT
 
 ## License
 
