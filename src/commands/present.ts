@@ -103,13 +103,13 @@ function buildTimeErrorMessage(reason: string | undefined, hint: string | undefi
   return `⏰ **Not the right time!**\n\n${reason}\n\n${hintText}`;
 }
 
-function buildSuccessMessage(username: string, oderId: string, streak: number): string {
+function buildSuccessMessage(username: string, userId: string, streak: number): string {
   const quote = getRandomPresenceQuote();
   const streakEmoji = getStreakEmoji(streak);
   const dayWord = pluralizeDays(streak);
   
   return (
-    `🌅 **${username}** present today @5AM Club! <@${oderId}>\n\n` +
+    `🌅 **${username}** present today @5AM Club! <@${userId}>\n\n` +
     `${quote}\n\n` +
     `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
   );

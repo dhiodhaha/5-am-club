@@ -74,14 +74,14 @@ async function sendPresenceFeedback(message: Message, streak: number): Promise<v
 
 function buildFeedbackMessage(
   username: string,
-  oderId: string,
+  userId: string,
   streak: number,
   dayWord: string,
   streakEmoji: string,
   quote: string
 ): string {
   return (
-    `✅ **${username}** is present! <@${oderId}>\n\n` +
+    `✅ **${username}** is present! <@${userId}>\n\n` +
     `${quote}\n\n` +
     `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
   );

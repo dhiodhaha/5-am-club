@@ -4,7 +4,8 @@ import {
   Events, 
   GatewayIntentBits, 
   ChatInputCommandInteraction,
-  AutocompleteInteraction 
+  AutocompleteInteraction,
+  ActivityType
 } from 'discord.js';
 import 'dotenv/config';
 
@@ -71,7 +72,7 @@ function setPresenceStatus(readyClient: Client<true>): void {
   readyClient.user.setPresence({
     activities: [{
       name: 'for /present at 5AM',
-      type: 3 // Watching
+      type: ActivityType.Watching
     }],
     status: 'online'
   });
@@ -111,21 +112,25 @@ async function handleSlashCommand(interaction: ChatInputCommandInteraction): Pro
 }
 
 async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<void> {
-  if (interaction.commandName !== 'setup') {
-    return;
-  }
-  
-  const focusedOption = interaction.options.getFocused(true);
-  
-  if (focusedOption.name !== 'timezone') {
-    return;
-  }
+  try {
+    if (interaction.commandName !== 'setup') {
+      return;
+    }
+    
+    const focusedOption = interaction.options.getFocused(true);
+    
+    if (focusedOption.name !== 'timezone') {
+      return;
+    }
 
-  const searchValue = focusedOption.value.toLowerCase();
-  const timezones = getCommonTimezones();
-  const filtered = filterTimezones(timezones, searchValue);
-  
-  await interaction.respond(filtered);
+    const searchValue = focusedOption.value.toLowerCase();
+    const timezones = getCommonTimezones();
+    const filtered = filterTimezones(timezones, searchValue);
+    
+    await interaction.respond(filtered);
+  } catch (error) {
+    console.error('❌ Error handling autocomplete:', error);
+  }
 }
 
 function filterTimezones(

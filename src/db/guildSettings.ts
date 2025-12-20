@@ -1,4 +1,5 @@
 import sql from './connection.js';
+import { DEFAULT_TIMEZONE } from '../constants.js';
 
 export interface GuildSettings {
   guild_id: string;
@@ -8,8 +9,6 @@ export interface GuildSettings {
   setup_at: Date;
   updated_at: Date;
 }
-
-const DEFAULT_TIMEZONE = 'Asia/Jakarta';
 
 /**
  * Get guild settings
@@ -33,7 +32,7 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
  */
 export async function getFiveAmChannelId(guildId: string): Promise<string | null> {
   const settings = await getGuildSettings(guildId);
-  return settings?.fiveam_channel_id || null;
+  return settings?.fiveam_channel_id ?? null;
 }
 
 /**
@@ -41,7 +40,7 @@ export async function getFiveAmChannelId(guildId: string): Promise<string | null
  */
 export async function getGuildTimezone(guildId: string): Promise<string> {
   const settings = await getGuildSettings(guildId);
-  return settings?.timezone || DEFAULT_TIMEZONE;
+  return settings?.timezone ?? DEFAULT_TIMEZONE;
 }
 
 /**

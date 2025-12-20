@@ -1,6 +1,5 @@
 import type { TimeCheckResult } from '../types/index.js';
-
-const DEFAULT_TIMEZONE = 'Asia/Jakarta';
+import { DEFAULT_TIMEZONE } from '../constants.js';
 
 /**
  * Get current time in a specific timezone
