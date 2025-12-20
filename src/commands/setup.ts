@@ -328,44 +328,7 @@ async function handleStatus(
 ): Promise<void> {
   try {
     const settings = await getGuildSettings(guildId);
-
-    const embed = new EmbedBuilder()
-      .setTitle('⚙️ 5AM Club Configuration')
-      .setColor(0x3498DB)
-      .setTimestamp();
-
-    if (!settings || !settings.fiveam_channel_id) {
-      const timezone = settings?.timezone || 'Asia/Jakarta';
-      embed.setDescription(
-        '**Status:** ❌ Not configured\n\n' +
-        `**Timezone:** ${getTimezoneDisplay(timezone)}\n` +
-        `**Current time:** ${getFormattedTime(timezone)}\n\n` +
-        'Use `/setup channel #channel-name` to set up the 5AM Club!\n\n' +
-        '*Only administrators can configure the bot.*'
-      );
-    } else {
-      const timezone = settings.timezone || 'Asia/Jakarta';
-      const setupDate = new Date(settings.setup_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-      });
-
-      embed.setDescription(
-        '**Status:** ✅ Active\n\n' +
-        `**5AM Channel:** <#${settings.fiveam_channel_id}>\n` +
-        `**Timezone:** ${getTimezoneDisplay(timezone)}\n` +
-        `**Current time:** ${getFormattedTime(timezone)}\n` +
-        `**Configured on:** ${setupDate}\n\n` +
-        '**Schedule (in your timezone):**\n' +
-        '• Presence window: 5:00 AM - 5:59 AM (Mon-Fri)\n' +
-        '• Leaderboard posted: 6:00 AM\n\n' +
-        '**Testing:**\n' +
-        '• Use `/setup test` to test anytime!\n\n' +
-        '*Use `/setup remove` to disable the bot.*'
-      );
-    }
-
+    const embed = buildStatusEmbed(settings);
     await interaction.reply({ embeds: [embed] });
   } catch (error) {
     console.error('Error fetching status:', error);
@@ -374,4 +337,75 @@ async function handleStatus(
       ephemeral: true,
     });
   }
+}
+
+function buildStatusEmbed(settings: Awaited<ReturnType<typeof getGuildSettings>>): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setTitle('⚙️ 5AM Club Configuration')
+    .setColor(0x3498DB)
+    .setTimestamp();
+
+  const isConfigured = settings && settings.fiveam_channel_id;
+  
+  if (isConfigured) {
+    setActiveStatusDescription(embed, settings);
+  } else {
+    setNotConfiguredDescription(embed, settings);
+  }
+
+  return embed;
+}
+
+function setNotConfiguredDescription(
+  embed: EmbedBuilder, 
+  settings: Awaited<ReturnType<typeof getGuildSettings>>
+): void {
+  const timezone = getTimezoneFromSettings(settings);
+  
+  embed.setDescription(
+    '**Status:** ❌ Not configured\n\n' +
+    `**Timezone:** ${getTimezoneDisplay(timezone)}\n` +
+    `**Current time:** ${getFormattedTime(timezone)}\n\n` +
+    'Use `/setup channel #channel-name` to set up the 5AM Club!\n\n' +
+    '*Only administrators can configure the bot.*'
+  );
+}
+
+function setActiveStatusDescription(
+  embed: EmbedBuilder,
+  settings: NonNullable<Awaited<ReturnType<typeof getGuildSettings>>>
+): void {
+  const timezone = settings.timezone || 'Asia/Jakarta';
+  const setupDate = formatSetupDate(settings.setup_at);
+
+  embed.setDescription(
+    '**Status:** ✅ Active\n\n' +
+    `**5AM Channel:** <#${settings.fiveam_channel_id}>\n` +
+    `**Timezone:** ${getTimezoneDisplay(timezone)}\n` +
+    `**Current time:** ${getFormattedTime(timezone)}\n` +
+    `**Configured on:** ${setupDate}\n\n` +
+    '**Schedule (in your timezone):**\n' +
+    '• Presence window: 5:00 AM - 5:59 AM (Mon-Fri)\n' +
+    '• Leaderboard posted: 6:00 AM\n\n' +
+    '**Testing:**\n' +
+    '• Use `/setup test` to test anytime!\n\n' +
+    '*Use `/setup remove` to disable the bot.*'
+  );
+}
+
+function getTimezoneFromSettings(
+  settings: Awaited<ReturnType<typeof getGuildSettings>>
+): string {
+  if (settings && settings.timezone) {
+    return settings.timezone;
+  }
+  return 'Asia/Jakarta';
+}
+
+function formatSetupDate(setupAt: Date): string {
+  return new Date(setupAt).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 }

@@ -12,8 +12,8 @@ export function buildDailySummaryEmbed(
   isTestMode: boolean = false
 ): EmbedBuilder {
   const today = formatTodayDate(timezone);
-  const title = isTestMode ? '🧪 TEST - 5AM Club Daily Summary' : '🌅 5AM Club - Daily Summary';
-  const footer = isTestMode ? '5AM Club • Rise & Grind • TEST MODE' : '5AM Club • Rise & Grind';
+  const title = getEmbedTitle(isTestMode);
+  const footer = getEmbedFooter(isTestMode);
   
   const embed = new EmbedBuilder()
     .setTitle(title)
@@ -29,9 +29,30 @@ export function buildDailySummaryEmbed(
   return embed;
 }
 
+function getEmbedTitle(isTestMode: boolean): string {
+  if (isTestMode) {
+    return '🧪 TEST - 5AM Club Daily Summary';
+  }
+  return '🌅 5AM Club - Daily Summary';
+}
+
+function getEmbedFooter(isTestMode: boolean): string {
+  if (isTestMode) {
+    return '5AM Club • Rise & Grind • TEST MODE';
+  }
+  return '5AM Club • Rise & Grind';
+}
+
 function setDescription(embed: EmbedBuilder, today: string, isTestMode: boolean): void {
-  const testNote = isTestMode ? '\n\n*This is how the 6 AM announcement looks!*' : '';
+  const testNote = getTestNote(isTestMode);
   embed.setDescription(`**${today}**\n\nThe early bird catches the worm! 🐦${testNote}`);
+}
+
+function getTestNote(isTestMode: boolean): string {
+  if (isTestMode) {
+    return '\n\n*This is how the 6 AM announcement looks!*';
+  }
+  return '';
 }
 
 function formatTodayDate(timezone: string): string {

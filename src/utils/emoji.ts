@@ -14,8 +14,16 @@ export function getStreakEmoji(streak: number): string {
  * Get medal emoji for leaderboard position
  */
 export function getMedalEmoji(position: number): string {
-  const medals = ['🥇', '🥈', '🥉'];
-  return medals[position] || `**${position + 1}.**`;
+  const medals: Record<number, string> = {
+    0: '🥇',
+    1: '🥈',
+    2: '🥉'
+  };
+  
+  if (position in medals) {
+    return medals[position];
+  }
+  return `**${position + 1}.**`;
 }
 
 /**
@@ -59,7 +67,10 @@ export function getRandomMotivation(): string {
  * Pluralize "day" based on count
  */
 export function pluralizeDays(count: number): string {
-  return count === 1 ? 'day' : 'days';
+  if (count === 1) {
+    return 'day';
+  }
+  return 'days';
 }
 
 
