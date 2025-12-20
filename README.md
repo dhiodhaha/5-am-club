@@ -239,4 +239,3 @@ Common timezone values:
 ## License
 
 MIT
-# 5-am-club
