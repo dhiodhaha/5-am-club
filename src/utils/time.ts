@@ -25,11 +25,12 @@ export function isPresenceTime(timezone: string = DEFAULT_TIMEZONE): TimeCheckRe
   const isValidHour = hour === 5;
 
   if (!isWeekdayNow) {
-    const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
+    const daysUntilMonday = calculateDaysUntilMonday(dayOfWeek);
+    const dayText = pluralize(daysUntilMonday, 'day', 'days');
     return {
       isValid: false,
       reason: '📅 Presence recording is only available **Monday to Friday**.',
-      hint: `Come back on Monday at 5AM! (${daysUntilMonday} day${daysUntilMonday > 1 ? 's' : ''} away)`,
+      hint: `Come back on Monday at 5AM! (${daysUntilMonday} ${dayText} away)`,
     };
   }
 
@@ -75,17 +76,39 @@ export function isAnnouncementTime(timezone: string = DEFAULT_TIMEZONE): boolean
  */
 function formatMinutes(minutes: number): string {
   if (minutes < 60) {
-    return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+    const minuteText = pluralize(minutes, 'minute', 'minutes');
+    return `${minutes} ${minuteText}`;
   }
 
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
 
   if (mins === 0) {
-    return `${hours} hour${hours !== 1 ? 's' : ''}`;
+    const hourText = pluralize(hours, 'hour', 'hours');
+    return `${hours} ${hourText}`;
   }
 
   return `${hours}h ${mins}m`;
+}
+
+/**
+ * Simple pluralization helper
+ */
+function pluralize(count: number, singular: string, plural: string): string {
+  if (count === 1) {
+    return singular;
+  }
+  return plural;
+}
+
+/**
+ * Calculate days until Monday
+ */
+function calculateDaysUntilMonday(dayOfWeek: number): number {
+  if (dayOfWeek === 0) {
+    return 1; // Sunday -> 1 day
+  }
+  return 8 - dayOfWeek; // Other days
 }
 
 /**

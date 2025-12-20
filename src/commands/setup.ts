@@ -21,7 +21,8 @@ import {
 } from '../utils/time.js';
 import { hasRecordedToday, getUserStreak, getTodayPresence, getStreakLeaderboard } from '../db/queries.js';
 import { getRandomPresenceQuote } from '../utils/quotes.js';
-import { getStreakEmoji, pluralizeDays, getMedalEmoji, getRandomMotivation } from '../utils/emoji.js';
+import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
+import { buildDailySummaryEmbed } from '../utils/embedBuilders.js';
 
 export const data = new SlashCommandBuilder()
   .setName('setup')
@@ -139,30 +140,49 @@ async function testPresence(
 ): Promise<void> {
   const { user } = interaction;
 
-  // Get current streak for preview (without recording)
   const currentStreak = await getUserStreak(user.id, guildId);
   const alreadyPresent = await hasRecordedToday(user.id, guildId);
   
-  // Simulate what would happen
-  const simulatedStreak = alreadyPresent ? currentStreak : currentStreak + 1;
-  const quote = getRandomPresenceQuote();
-  const streakEmoji = getStreakEmoji(simulatedStreak);
-  const dayWord = pluralizeDays(simulatedStreak);
-
-  const previewNote = alreadyPresent 
-    ? `\n\n📝 *You're already present today. This is what it looked like!*`
-    : `\n\n📝 *This is a PREVIEW. No data was recorded.*`;
+  const simulatedStreak = calculateSimulatedStreak(currentStreak, alreadyPresent);
+  const previewNote = getPreviewNote(alreadyPresent);
+  const message = buildPresencePreviewMessage(user, simulatedStreak, previewNote);
 
   await interaction.reply({
-    content: (
-      `🧪 **PREVIEW MODE**\n\n` +
-      `🌅 **${user.username}** present today @5AM Club! <@${user.id}>\n\n` +
-      `${quote}\n\n` +
-      `🔥 Current streak: **${simulatedStreak}** ${dayWord} ${streakEmoji}` +
-      previewNote
-    ),
-    allowedMentions: { users: [] }, // Don't actually ping in preview
+    content: message,
+    allowedMentions: { users: [] },
   });
+}
+
+function calculateSimulatedStreak(currentStreak: number, alreadyPresent: boolean): number {
+  if (alreadyPresent) {
+    return currentStreak;
+  }
+  return currentStreak + 1;
+}
+
+function getPreviewNote(alreadyPresent: boolean): string {
+  if (alreadyPresent) {
+    return `\n\n📝 *You're already present today. This is what it looked like!*`;
+  }
+  return `\n\n📝 *This is a PREVIEW. No data was recorded.*`;
+}
+
+function buildPresencePreviewMessage(
+  user: { username: string; id: string },
+  streak: number,
+  previewNote: string
+): string {
+  const quote = getRandomPresenceQuote();
+  const streakEmoji = getStreakEmoji(streak);
+  const dayWord = pluralizeDays(streak);
+
+  return (
+    `🧪 **PREVIEW MODE**\n\n` +
+    `🌅 **${user.username}** present today @5AM Club! <@${user.id}>\n\n` +
+    `${quote}\n\n` +
+    `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}` +
+    previewNote
+  );
 }
 
 async function testLeaderboard(
@@ -175,73 +195,8 @@ async function testLeaderboard(
     const timezone = await getGuildTimezone(guildId);
     const todayPresence = await getTodayPresence(guildId);
     const streakLeaderboard = await getStreakLeaderboard(guildId);
-
-    const today = new Date().toLocaleDateString('en-US', {
-      timeZone: timezone,
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
-    const embed = new EmbedBuilder()
-      .setTitle('🧪 TEST - 5AM Club Daily Summary')
-      .setDescription(`**${today}**\n\nThe early bird catches the worm! 🐦\n\n*This is how the 6 AM announcement looks!*`)
-      .setColor(0xF1C40F)
-      .setTimestamp()
-      .setFooter({ text: '5AM Club • Rise & Grind • TEST MODE' });
-
-    // Today's attendees
-    if (todayPresence.length === 0) {
-      embed.addFields({
-        name: '📋 Today\'s Early Risers',
-        value: '*No one showed up today!* 😴\n\nWhere were you, champs?',
-        inline: false
-      });
-    } else {
-      const attendeeList = todayPresence.map((entry, index) => {
-        const time = new Date(entry.present_at).toLocaleTimeString('en-US', {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        return `${index + 1}. <@${entry.user_id}> at ${time}`;
-      }).join('\n');
-
-      embed.addFields({
-        name: `📋 Today's Early Risers (${todayPresence.length})`,
-        value: attendeeList,
-        inline: false
-      });
-    }
-
-    // Streak leaderboard
-    if (streakLeaderboard.length === 0) {
-      embed.addFields({
-        name: '🔥 Streak Leaderboard',
-        value: '*No active streaks yet!*\n\nStart your streak with `/present` tomorrow!',
-        inline: false
-      });
-    } else {
-      const leaderboardList = streakLeaderboard.slice(0, 5).map((entry, index) => {
-        const medal = getMedalEmoji(index);
-        const streakEmoji = getStreakEmoji(entry.current_streak);
-        return `${medal} <@${entry.user_id}> — **${entry.current_streak}** day streak ${streakEmoji}`;
-      }).join('\n');
-
-      embed.addFields({
-        name: '🔥 Streak Leaderboard (Consecutive Days)',
-        value: leaderboardList,
-        inline: false
-      });
-    }
-
-    // Motivational quote
-    embed.addFields({
-      name: '\u200B',
-      value: getRandomMotivation(),
-      inline: false
-    });
-
+    
+    const embed = buildDailySummaryEmbed(todayPresence, streakLeaderboard, timezone, true);
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('Error in test leaderboard:', error);

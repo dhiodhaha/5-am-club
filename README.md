@@ -246,7 +246,8 @@ src/
 ├── utils/
 │   ├── time.ts           # Time utilities
 │   ├── emoji.ts          # Emoji formatting
-│   └── quotes.ts         # 50 motivational quotes
+│   ├── quotes.ts         # 50 motivational quotes
+│   └── embedBuilders.ts  # Shared embed builders (SRP)
 └── types/
     └── index.ts          # TypeScript types
 ```
