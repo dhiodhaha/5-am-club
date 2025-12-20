@@ -88,6 +88,20 @@ View the all-time total leaderboard (top 10).
 ### `/stats [user]`
 View your statistics or another user's stats.
 
+## Multi-Server Support ✅
+
+This bot works on **ALL servers** that invite it! Each server is independent:
+
+| Feature | Per Server? |
+|---------|-------------|
+| 5AM Channel | ✅ Each server sets their own |
+| Timezone | ✅ Each server sets their own |
+| Presence Records | ✅ Separate per server |
+| Leaderboards | ✅ Separate per server |
+| Streak Tracking | ✅ Separate per server |
+
+Just invite the bot → Admin runs `/setup channel #5am-club` → Done!
+
 ## Prerequisites
 
 - Node.js 18+
@@ -134,12 +148,25 @@ Edit `.env`:
 ```env
 DISCORD_TOKEN=your_discord_bot_token
 DISCORD_CLIENT_ID=your_application_client_id
-DISCORD_GUILD_ID=your_server_id
-
 DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 ```
 
-> **Note:** Channel and timezone are configured per-server via `/setup` command, not in .env!
+> **That's it!** Channel and timezone are configured per-server via `/setup` command.
+>
+> Each server's admin will run `/setup channel #5am-club` after inviting the bot.
+
+#### Development Mode (Optional)
+
+For faster testing during development, add your test server:
+
+```env
+DISCORD_GUILD_ID=your_test_server_id  # Optional: instant command updates
+```
+
+| Mode | GUILD_ID | Command Deploy | Use Case |
+|------|----------|----------------|----------|
+| **Production** | Not set | Global (all servers) | Multi-server bot |
+| Development | Set | Single server only | Testing |
 
 ### 5. Install & Run
 
@@ -147,9 +174,12 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 npm install
 npm run build
 npm run migrate
-npm run deploy-commands
+npm run deploy-commands   # Deploys commands globally (takes ~1 hour to appear everywhere)
 npm start
 ```
+
+> ⏳ **Global commands** take up to 1 hour to appear in all servers.
+> For instant testing, set `DISCORD_GUILD_ID` temporarily.
 
 ### 6. Configure in Discord
 
@@ -273,3 +303,4 @@ Available timezones (use autocomplete for full list):
 ## License
 
 MIT
+

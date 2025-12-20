@@ -28,32 +28,51 @@ async function deployCommands(): Promise<void> {
   try {
     console.log(`🔄 Started refreshing ${commands.length} application (/) commands.`);
 
-    // Deploy to specific guild (faster for development)
     if (guildId) {
-      const data = await rest.put(
-        Routes.applicationGuildCommands(clientId as string, guildId),
-        { body: commands },
-      ) as unknown[];
-      console.log(`✅ Successfully reloaded ${data.length} guild commands.`);
+      await deployToGuild();
     } else {
-      // Deploy globally (takes up to 1 hour to propagate)
-      const data = await rest.put(
-        Routes.applicationCommands(clientId as string),
-        { body: commands },
-      ) as unknown[];
-      console.log(`✅ Successfully reloaded ${data.length} global commands.`);
+      await deployGlobally();
     }
     
-    console.log('🎉 Commands deployed successfully!');
-    console.log('\nAvailable commands:');
-    commands.forEach(cmd => {
-      console.log(`  /${cmd.name} - ${cmd.description}`);
-    });
-    
+    logDeployedCommands();
   } catch (error) {
     console.error('❌ Error deploying commands:', error);
     process.exit(1);
   }
+}
+
+async function deployToGuild(): Promise<void> {
+  const data = await rest.put(
+    Routes.applicationGuildCommands(clientId as string, guildId as string),
+    { body: commands },
+  ) as unknown[];
+  
+  console.log(`✅ Successfully deployed ${data.length} commands to guild: ${guildId}`);
+  console.log('');
+  console.log('⚡ DEV MODE: Commands available instantly in this server only.');
+  console.log('💡 For production (all servers), remove DISCORD_GUILD_ID from .env');
+}
+
+async function deployGlobally(): Promise<void> {
+  const data = await rest.put(
+    Routes.applicationCommands(clientId as string),
+    { body: commands },
+  ) as unknown[];
+  
+  console.log(`✅ Successfully deployed ${data.length} commands GLOBALLY.`);
+  console.log('');
+  console.log('🌐 PRODUCTION MODE: Commands will work on ALL servers that invite the bot!');
+  console.log('⏳ Note: Global commands take up to 1 hour to appear everywhere.');
+}
+
+function logDeployedCommands(): void {
+  console.log('');
+  console.log('🎉 Commands deployed successfully!');
+  console.log('');
+  console.log('Available commands:');
+  commands.forEach(cmd => {
+    console.log(`  /${cmd.name} - ${cmd.description}`);
+  });
 }
 
 deployCommands();

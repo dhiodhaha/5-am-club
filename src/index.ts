@@ -42,12 +42,15 @@ client.commands.set(setup.data.name, setup);
 
 // Ready event
 client.once(Events.ClientReady, (readyClient) => {
+  const guildCount = readyClient.guilds.cache.size;
+  const guildText = guildCount === 1 ? 'server' : 'servers';
+  
   console.log('━'.repeat(50));
   console.log('🌅 5AM Club Bot is online!');
   console.log(`📛 Logged in as: ${readyClient.user.tag}`);
-  console.log(`🏠 Serving ${readyClient.guilds.cache.size} guild(s)`);
+  console.log(`🌐 Serving ${guildCount} ${guildText}`);
   console.log('📨 Message presence detection: ENABLED');
-  console.log('⚙️ Config: Per-guild (channel + timezone)');
+  console.log('⚙️ Each server configures via /setup');
   console.log('━'.repeat(50));
   
   // Start the scheduler for daily leaderboard announcements
