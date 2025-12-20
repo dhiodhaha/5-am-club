@@ -1,5 +1,6 @@
 import { SlashCommandBuilder, EmbedBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { getAllTimeLeaderboard } from '../db/queries.js';
+import { getMedalEmoji } from '../utils/emoji.js';
 import type { LeaderboardEntry } from '../types/index.js';
 
 export const data = new SlashCommandBuilder()
@@ -20,7 +21,8 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   await interaction.deferReply();
 
   try {
-    const embed = await buildTotalLeaderboardEmbed(guildId);
+    const leaderboard = await getAllTimeLeaderboard(guildId);
+    const embed = buildLeaderboardEmbed(leaderboard);
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('Error fetching leaderboard:', error);
@@ -30,9 +32,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   }
 }
 
-async function buildTotalLeaderboardEmbed(guildId: string): Promise<EmbedBuilder> {
-  const leaderboard = await getAllTimeLeaderboard(guildId);
-
+function buildLeaderboardEmbed(leaderboard: LeaderboardEntry[]): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setTitle('👑 5AM Club - Total Leaderboard')
     .setDescription('All-time champions ranked by total days present')
@@ -46,26 +46,27 @@ async function buildTotalLeaderboardEmbed(guildId: string): Promise<EmbedBuilder
       value: '*No presence records yet!*\n\nStart your journey with `/present` at 5AM! 🌅',
     });
   } else {
-    const medals = ['🥇', '🥈', '🥉'];
-    const description = leaderboard
-      .map((entry: LeaderboardEntry, index: number) => {
-        const medal = medals[index] || `**${index + 1}.**`;
-        const total = parseInt(entry.total_presents || '0');
-        return `${medal} <@${entry.user_id}> — **${total}** total days`;
-      })
-      .join('\n');
-
+    const rankingText = formatLeaderboardRankings(leaderboard);
     embed.addFields({
       name: '📊 All-Time Rankings',
-      value: description,
+      value: rankingText,
     });
   }
 
-  // Add info about streak leaderboard
   embed.addFields({
     name: '\u200B',
     value: '*💡 Streak leaderboard is announced automatically at 6:00 AM daily!*',
   });
 
   return embed;
+}
+
+function formatLeaderboardRankings(leaderboard: LeaderboardEntry[]): string {
+  return leaderboard
+    .map((entry, index) => {
+      const medal = getMedalEmoji(index);
+      const total = parseInt(entry.total_presents || '0');
+      return `${medal} <@${entry.user_id}> — **${total}** total days`;
+    })
+    .join('\n');
 }

@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.js';
 import { isPresenceTime } from '../utils/time.js';
+import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
 
 const FIVEAM_CHANNEL_ID = process.env.FIVEAM_CHANNEL_ID;
 
@@ -19,8 +20,7 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  // Check if command is used in the correct channel
-  if (FIVEAM_CHANNEL_ID && channelId !== FIVEAM_CHANNEL_ID) {
+  if (!isCorrectChannel(channelId)) {
     await interaction.reply({
       content: `❌ **Wrong channel!**\n\nYou can only use \`/present\` in <#${FIVEAM_CHANNEL_ID}>`,
       ephemeral: true,
@@ -28,42 +28,30 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
-  // Check if it's the right time (5AM - 6AM, Monday to Friday)
   const timeCheck = isPresenceTime();
-
   if (!timeCheck.isValid) {
     await interaction.reply({
-      content: `⏰ **Not the right time!**\n\n${timeCheck.reason}\n\n${timeCheck.hint || ''}`,
+      content: buildTimeErrorMessage(timeCheck.reason, timeCheck.hint),
       ephemeral: true,
     });
     return;
   }
 
-  // Check if already recorded today
   const alreadyPresent = await hasRecordedToday(user.id, guildId);
-
   if (alreadyPresent) {
     await interaction.reply({
-      content: `✅ You've already marked your presence today! Keep up the great work! 💪`,
+      content: '✅ You\'ve already marked your presence today! Keep up the great work! 💪',
       ephemeral: true,
     });
     return;
   }
 
-  // Record the presence
   try {
     await recordPresence(user.id, user.username, guildId);
-    
-    // Get user's current streak after recording
     const currentStreak = await getUserStreak(user.id, guildId);
-    const streakEmoji = '🔥'.repeat(Math.min(Math.ceil(currentStreak / 5), 5));
-
-    // Public announcement with streak info
+    
     await interaction.reply({
-      content:
-        `🌅 **${user.username}** present today @5AM Club! <@${user.id}>\n\n` +
-        `Rise and grind! Another early morning conquered. 💪\n` +
-        `🔥 Current streak: **${currentStreak}** day${currentStreak !== 1 ? 's' : ''} ${streakEmoji}`,
+      content: buildSuccessMessage(user.username, user.id, currentStreak),
       allowedMentions: { users: [user.id] },
     });
   } catch (error) {
@@ -73,4 +61,27 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
       ephemeral: true,
     });
   }
+}
+
+function isCorrectChannel(channelId: string): boolean {
+  if (!FIVEAM_CHANNEL_ID) {
+    return true; // No restriction if not configured
+  }
+  return channelId === FIVEAM_CHANNEL_ID;
+}
+
+function buildTimeErrorMessage(reason: string | undefined, hint: string | undefined): string {
+  const hintText = hint || '';
+  return `⏰ **Not the right time!**\n\n${reason}\n\n${hintText}`;
+}
+
+function buildSuccessMessage(username: string, oderId: string, streak: number): string {
+  const streakEmoji = getStreakEmoji(streak);
+  const dayWord = pluralizeDays(streak);
+  
+  return (
+    `🌅 **${username}** present today @5AM Club! <@${oderId}>\n\n` +
+    `Rise and grind! Another early morning conquered. 💪\n` +
+    `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
+  );
 }

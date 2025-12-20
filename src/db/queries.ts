@@ -6,6 +6,19 @@ interface RecordPresenceResult {
   alreadyPresent: boolean;
 }
 
+interface PresenceRecord {
+  present_date: string;
+}
+
+interface UserRecord {
+  user_id: string;
+  username: string;
+}
+
+// ============================================
+// Presence Recording
+// ============================================
+
 /**
  * Record user presence for today
  */
@@ -14,7 +27,7 @@ export async function recordPresence(
   username: string,
   guildId: string
 ): Promise<RecordPresenceResult> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
 
   try {
     await sql`
@@ -22,10 +35,9 @@ export async function recordPresence(
       VALUES (${userId}, ${username}, ${guildId}, ${today})
       ON CONFLICT (user_id, guild_id, present_date) DO NOTHING
     `;
-
     return { success: true, alreadyPresent: false };
   } catch (error: unknown) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
+    if (isUniqueConstraintError(error)) {
       return { success: true, alreadyPresent: true };
     }
     throw error;
@@ -36,7 +48,7 @@ export async function recordPresence(
  * Check if user already recorded presence today
  */
 export async function hasRecordedToday(userId: string, guildId: string): Promise<boolean> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
 
   const result = await sql`
     SELECT id FROM presence_records 
@@ -52,7 +64,7 @@ export async function hasRecordedToday(userId: string, guildId: string): Promise
  * Get today's presence records for a guild
  */
 export async function getTodayPresence(guildId: string): Promise<TodayPresenceEntry[]> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getTodayDateString();
 
   const result = await sql`
     SELECT user_id, username, present_at
@@ -65,33 +77,9 @@ export async function getTodayPresence(guildId: string): Promise<TodayPresenceEn
   return result as TodayPresenceEntry[];
 }
 
-/**
- * Get weekly leaderboard (current week's stats)
- */
-export async function getWeeklyLeaderboard(guildId: string): Promise<LeaderboardEntry[]> {
-  // Get Monday of current week
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1));
-  monday.setHours(0, 0, 0, 0);
-  const mondayStr = monday.toISOString().split('T')[0];
-
-  const result = await sql`
-    SELECT 
-      user_id,
-      username,
-      COUNT(*) as week_presents
-    FROM presence_records 
-    WHERE guild_id = ${guildId} 
-      AND present_date >= ${mondayStr}
-    GROUP BY user_id, username
-    ORDER BY week_presents DESC, MIN(present_at) ASC
-    LIMIT 10
-  `;
-
-  return result as LeaderboardEntry[];
-}
+// ============================================
+// Leaderboards
+// ============================================
 
 /**
  * Get all-time leaderboard
@@ -113,6 +101,23 @@ export async function getAllTimeLeaderboard(guildId: string): Promise<Leaderboar
 }
 
 /**
+ * Get streak leaderboard for a guild
+ */
+export async function getStreakLeaderboard(guildId: string): Promise<StreakEntry[]> {
+  const users = await getGuildUsers(guildId);
+  const streakEntries = await calculateStreaksForUsers(users, guildId);
+  
+  return streakEntries
+    .filter(entry => entry.current_streak > 0)
+    .sort((a, b) => b.current_streak - a.current_streak)
+    .slice(0, 10);
+}
+
+// ============================================
+// User Stats & Streaks
+// ============================================
+
+/**
  * Get user stats
  */
 export async function getUserStats(userId: string, guildId: string): Promise<UserStats | null> {
@@ -126,7 +131,8 @@ export async function getUserStats(userId: string, guildId: string): Promise<Use
       AND guild_id = ${guildId}
   `;
 
-  if (result.length === 0 || result[0].total_presents === '0') {
+  const hasNoRecords = result.length === 0 || result[0].total_presents === '0';
+  if (hasNoRecords) {
     return null;
   }
 
@@ -134,30 +140,47 @@ export async function getUserStats(userId: string, guildId: string): Promise<Use
 }
 
 /**
- * Get all weekdays between two dates (for streak calculation)
- */
-function getWeekdaysBetween(startDate: Date, endDate: Date): string[] {
-  const weekdays: string[] = [];
-  const current = new Date(startDate);
-  
-  while (current <= endDate) {
-    const day = current.getDay();
-    // Only include weekdays (Mon=1 to Fri=5)
-    if (day >= 1 && day <= 5) {
-      weekdays.push(current.toISOString().split('T')[0]);
-    }
-    current.setDate(current.getDate() + 1);
-  }
-  
-  return weekdays;
-}
-
-/**
  * Calculate current streak for a user
  * Streak = consecutive weekdays (Mon-Fri) the user has been present
  */
 export async function getUserStreak(userId: string, guildId: string): Promise<number> {
-  // Get all presence records for this user, ordered by date descending
+  const presenceRecords = await getUserPresenceRecords(userId, guildId);
+
+  if (presenceRecords.length === 0) {
+    return 0;
+  }
+
+  const presentDates = new Set(presenceRecords.map(r => r.present_date));
+  return calculateConsecutiveWeekdayStreak(presentDates);
+}
+
+// ============================================
+// Helper Functions
+// ============================================
+
+function getTodayDateString(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === '23505'
+  );
+}
+
+async function getGuildUsers(guildId: string): Promise<UserRecord[]> {
+  const result = await sql`
+    SELECT DISTINCT user_id, username
+    FROM presence_records 
+    WHERE guild_id = ${guildId}
+  `;
+  return result as UserRecord[];
+}
+
+async function getUserPresenceRecords(userId: string, guildId: string): Promise<PresenceRecord[]> {
   const result = await sql`
     SELECT present_date
     FROM presence_records 
@@ -165,29 +188,30 @@ export async function getUserStreak(userId: string, guildId: string): Promise<nu
       AND guild_id = ${guildId}
     ORDER BY present_date DESC
   `;
+  return result as PresenceRecord[];
+}
 
-  if (result.length === 0) {
-    return 0;
-  }
-
-  const presentDates = new Set(result.map(r => r.present_date));
+async function calculateStreaksForUsers(users: UserRecord[], guildId: string): Promise<StreakEntry[]> {
+  const entries: StreakEntry[] = [];
   
-  // Start from today and go backwards
-  const today = new Date();
+  for (const user of users) {
+    const streak = await getUserStreak(user.user_id, guildId);
+    entries.push({
+      user_id: user.user_id,
+      username: user.username,
+      current_streak: streak
+    });
+  }
+  
+  return entries;
+}
+
+function calculateConsecutiveWeekdayStreak(presentDates: Set<string>): number {
   let streak = 0;
-  let checkDate = new Date(today);
+  const checkDate = getStartDateForStreakCalculation();
+  const maxIterations = 260; // ~52 weeks * 5 weekdays
   
-  // If today is weekend, start from last Friday
-  const dayOfWeek = checkDate.getDay();
-  if (dayOfWeek === 0) { // Sunday
-    checkDate.setDate(checkDate.getDate() - 2);
-  } else if (dayOfWeek === 6) { // Saturday
-    checkDate.setDate(checkDate.getDate() - 1);
-  }
-  
-  // Count consecutive weekdays with presence
-  while (true) {
-    const dateStr = checkDate.toISOString().split('T')[0];
+  for (let i = 0; i < maxIterations; i++) {
     const day = checkDate.getDay();
     
     // Skip weekends
@@ -196,51 +220,29 @@ export async function getUserStreak(userId: string, guildId: string): Promise<nu
       continue;
     }
     
-    // Check if user was present on this weekday
+    const dateStr = checkDate.toISOString().split('T')[0];
+    
     if (presentDates.has(dateStr)) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
     } else {
-      // Streak broken
-      break;
+      break; // Streak broken
     }
-    
-    // Safety: don't go back more than 365 days
-    if (streak > 260) break; // ~52 weeks * 5 weekdays
   }
   
   return streak;
 }
 
-/**
- * Get streak leaderboard for a guild
- * Shows users with their current consecutive weekday streaks
- */
-export async function getStreakLeaderboard(guildId: string): Promise<StreakEntry[]> {
-  // Get all unique users in this guild
-  const users = await sql`
-    SELECT DISTINCT user_id, username
-    FROM presence_records 
-    WHERE guild_id = ${guildId}
-  `;
-
-  // Calculate streak for each user
-  const streakEntries: StreakEntry[] = [];
+function getStartDateForStreakCalculation(): Date {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
   
-  for (const user of users) {
-    const streak = await getUserStreak(user.user_id, guildId);
-    if (streak > 0) {
-      streakEntries.push({
-        user_id: user.user_id,
-        username: user.username,
-        current_streak: streak
-      });
-    }
+  // If today is weekend, start from last Friday
+  if (dayOfWeek === 0) { // Sunday
+    today.setDate(today.getDate() - 2);
+  } else if (dayOfWeek === 6) { // Saturday
+    today.setDate(today.getDate() - 1);
   }
   
-  // Sort by streak descending
-  streakEntries.sort((a, b) => b.current_streak - a.current_streak);
-  
-  return streakEntries.slice(0, 10);
+  return today;
 }
-
