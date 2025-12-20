@@ -4,11 +4,25 @@ A Discord bot for tracking early morning presence. Members can check in between 
 
 ## Features
 
-- **`/present`** - Record your presence (only works 5-6 AM, Mon-Fri, in designated channel)
+- **Message Presence** - Any message in the 5AM channel counts as presence!
+- **`/present`** - Manual presence command (also works)
 - **`/leaderboard`** - View all-time total leaderboard
 - **`/stats`** - View your streak and personal statistics
 - **Streak Tracking** - Counts consecutive weekdays you've been present
 - **Auto Announcements** - Daily streak leaderboard posted at 6 AM
+- **50 Motivational Quotes** - Random feedback when you check in
+
+## How Presence Works
+
+| Action | Result |
+|--------|--------|
+| Send any message in 5AM channel | ✅ Counted as present (with quote reply) |
+| Use `/present` command | ✅ Counted as present (with quote) |
+| Send 2nd message (already present) | ❌ Not double counted (silent) |
+| Use `/present` after message | ❌ Not double counted (shows current streak) |
+| Message after `/present` | ❌ Not double counted (silent) |
+
+**Key:** Only ONE presence per day, whether by message or command!
 
 ## Two Leaderboards
 
@@ -73,7 +87,7 @@ DATABASE_URL=postgresql://user:pass@ep-xxx.neon.tech/neondb?sslmode=require
 # Timezone (default: Asia/Jakarta / GMT+7)
 TIMEZONE=Asia/Jakarta
 
-# 5AM Club Channel (required - /present only works here)
+# 5AM Club Channel (required - presence only counted here)
 FIVEAM_CHANNEL_ID=your_5am_club_channel_id
 
 # Leaderboard announcements (optional - defaults to FIVEAM_CHANNEL_ID)
@@ -108,7 +122,7 @@ Record your presence for the 5AM Club.
 - 📅 Only available **Monday - Friday**
 - 📍 Only works in the designated **5AM Club channel**
 - ✅ One check-in per day
-- 🔥 Shows your current streak when you check in
+- 🔥 Shows your current streak + motivational quote
 
 ### `/leaderboard`
 View the all-time total leaderboard.
@@ -121,6 +135,21 @@ View your statistics or another user's stats.
 - 🔥 Current streak (consecutive weekdays)
 - 🔢 Total days present
 - 📅 First and last check-in dates
+
+## Message Presence Detection
+
+The bot watches the 5AM Club channel during the presence window (5:00-5:59 AM, Mon-Fri). When you send any message:
+
+1. Bot checks if you're already present today
+2. If not, records your presence
+3. Replies with a motivational quote and your streak
+
+**Example response:**
+> ✅ **username** is present!
+> 
+> 🌅 The world belongs to those who wake up early!
+> 
+> 🔥 Current streak: **5** days 🔥
 
 ## How Streaks Work
 
@@ -189,7 +218,7 @@ npm run pm2:status   # Check status
 | Time | Action |
 |------|--------|
 | 4:45 AM | Bot starts (PM2 cron) |
-| 5:00 - 5:59 AM | `/present` window open |
+| 5:00 - 5:59 AM | Presence window open (message or /present) |
 | 6:00 AM | Streak leaderboard announcement |
 | 6:15 AM | Bot shuts down |
 
@@ -216,12 +245,17 @@ src/
 │   ├── present.ts     # /present command
 │   ├── leaderboard.ts # /leaderboard command
 │   └── stats.ts       # /stats command
+├── handlers/
+│   └── messagePresence.ts  # Message-based presence detection
 ├── db/
 │   ├── connection.ts  # Neon PostgreSQL connection
 │   ├── migrate.ts     # Database migrations
 │   └── queries.ts     # Database queries + streak calculation
 ├── utils/
-│   └── time.ts        # Time utilities (5-6AM check, timezone)
+│   ├── time.ts        # Time utilities (5-6AM check, timezone)
+│   ├── emoji.ts       # Emoji & message formatting
+│   ├── channel.ts     # Channel finding utilities
+│   └── quotes.ts      # 50 motivational quotes
 └── types/
     └── index.ts       # TypeScript type definitions
 ```

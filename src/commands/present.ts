@@ -2,6 +2,7 @@ import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.js';
 import { isPresenceTime } from '../utils/time.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
+import { getRandomPresenceQuote } from '../utils/quotes.js';
 
 const FIVEAM_CHANNEL_ID = process.env.FIVEAM_CHANNEL_ID;
 
@@ -13,36 +14,29 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   const { user, guildId, channelId } = interaction;
 
   if (!guildId) {
-    await interaction.reply({
-      content: '❌ This command can only be used in a server!',
-      ephemeral: true,
-    });
+    await replyError(interaction, '❌ This command can only be used in a server!');
     return;
   }
 
   if (!isCorrectChannel(channelId)) {
-    await interaction.reply({
-      content: `❌ **Wrong channel!**\n\nYou can only use \`/present\` in <#${FIVEAM_CHANNEL_ID}>`,
-      ephemeral: true,
-    });
+    await replyError(
+      interaction,
+      `❌ **Wrong channel!**\n\nYou can only use \`/present\` in <#${FIVEAM_CHANNEL_ID}>`
+    );
     return;
   }
 
   const timeCheck = isPresenceTime();
   if (!timeCheck.isValid) {
-    await interaction.reply({
-      content: buildTimeErrorMessage(timeCheck.reason, timeCheck.hint),
-      ephemeral: true,
-    });
+    await replyError(interaction, buildTimeErrorMessage(timeCheck.reason, timeCheck.hint));
     return;
   }
 
+  // Check if already recorded today (via message or /present)
   const alreadyPresent = await hasRecordedToday(user.id, guildId);
   if (alreadyPresent) {
-    await interaction.reply({
-      content: '✅ You\'ve already marked your presence today! Keep up the great work! 💪',
-      ephemeral: true,
-    });
+    const currentStreak = await getUserStreak(user.id, guildId);
+    await replyAlreadyPresent(interaction, currentStreak);
     return;
   }
 
@@ -56,10 +50,10 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     });
   } catch (error) {
     console.error('Error recording presence:', error);
-    await interaction.reply({
-      content: '❌ Something went wrong while recording your presence. Please try again!',
-      ephemeral: true,
-    });
+    await replyError(
+      interaction,
+      '❌ Something went wrong while recording your presence. Please try again!'
+    );
   }
 }
 
@@ -70,18 +64,45 @@ function isCorrectChannel(channelId: string): boolean {
   return channelId === FIVEAM_CHANNEL_ID;
 }
 
+async function replyError(interaction: ChatInputCommandInteraction, message: string): Promise<void> {
+  await interaction.reply({
+    content: message,
+    ephemeral: true,
+  });
+}
+
+async function replyAlreadyPresent(
+  interaction: ChatInputCommandInteraction,
+  streak: number
+): Promise<void> {
+  const quote = getRandomPresenceQuote();
+  const streakEmoji = getStreakEmoji(streak);
+  const dayWord = pluralizeDays(streak);
+
+  await interaction.reply({
+    content: (
+      `✅ **You're already present today!**\n\n` +
+      `${quote}\n\n` +
+      `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}\n\n` +
+      `*Keep up the great work! See you tomorrow at 5AM!* 💪`
+    ),
+    ephemeral: true,
+  });
+}
+
 function buildTimeErrorMessage(reason: string | undefined, hint: string | undefined): string {
   const hintText = hint || '';
   return `⏰ **Not the right time!**\n\n${reason}\n\n${hintText}`;
 }
 
-function buildSuccessMessage(username: string, oderId: string, streak: number): string {
+function buildSuccessMessage(username: string, userId: string, streak: number): string {
+  const quote = getRandomPresenceQuote();
   const streakEmoji = getStreakEmoji(streak);
   const dayWord = pluralizeDays(streak);
   
   return (
-    `🌅 **${username}** present today @5AM Club! <@${oderId}>\n\n` +
-    `Rise and grind! Another early morning conquered. 💪\n` +
+    `🌅 **${username}** present today @5AM Club! <@${userId}>\n\n` +
+    `${quote}\n\n` +
     `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
   );
 }

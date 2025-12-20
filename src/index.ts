@@ -5,6 +5,7 @@ import * as present from './commands/present.js';
 import * as leaderboard from './commands/leaderboard.js';
 import * as stats from './commands/stats.js';
 import { startScheduler } from './scheduler.js';
+import { handleMessagePresence } from './handlers/messagePresence.js';
 import type { Command } from './types/index.js';
 
 // Extend Client type to include commands collection
@@ -32,10 +33,11 @@ client.commands.set(stats.data.name, stats);
 // Ready event
 client.once(Events.ClientReady, (readyClient) => {
   console.log('━'.repeat(50));
-  console.log(`🌅 5AM Club Bot is online!`);
+  console.log('🌅 5AM Club Bot is online!');
   console.log(`📛 Logged in as: ${readyClient.user.tag}`);
   console.log(`🏠 Serving ${readyClient.guilds.cache.size} guild(s)`);
   console.log(`⏰ Timezone: ${process.env.TIMEZONE || 'Asia/Jakarta'}`);
+  console.log('📨 Message presence detection: ENABLED');
   console.log('━'.repeat(50));
   
   // Start the scheduler for daily leaderboard announcements
@@ -51,7 +53,12 @@ client.once(Events.ClientReady, (readyClient) => {
   });
 });
 
-// Interaction handler
+// Message handler for presence detection
+client.on(Events.MessageCreate, async (message) => {
+  await handleMessagePresence(message);
+});
+
+// Interaction handler for slash commands
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   
@@ -66,19 +73,22 @@ client.on(Events.InteractionCreate, async (interaction) => {
     await command.execute(interaction as ChatInputCommandInteraction);
   } catch (error) {
     console.error(`❌ Error executing ${interaction.commandName}:`, error);
-    
-    const errorMessage = {
-      content: '❌ There was an error executing this command!',
-      ephemeral: true
-    };
-    
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp(errorMessage);
-    } else {
-      await interaction.reply(errorMessage);
-    }
+    await handleCommandError(interaction);
   }
 });
+
+async function handleCommandError(interaction: ChatInputCommandInteraction): Promise<void> {
+  const errorMessage = {
+    content: '❌ There was an error executing this command!',
+    ephemeral: true
+  };
+  
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp(errorMessage);
+  } else {
+    await interaction.reply(errorMessage);
+  }
+}
 
 // Error handling
 client.on(Events.Error, (error) => {
@@ -96,4 +106,3 @@ if (!process.env.DISCORD_TOKEN) {
 }
 
 client.login(process.env.DISCORD_TOKEN);
-
