@@ -1,7 +1,7 @@
 module.exports = {
   apps: [{
     name: '5am-club-bot',
-    script: 'src/index.js',
+    script: 'dist/index.js',  // Built TypeScript output
     
     // Cron pattern to START the bot at 4:45 AM (Mon-Fri)
     cron_restart: '45 4 * * 1-5',
