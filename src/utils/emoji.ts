@@ -45,7 +45,7 @@ export function getStreakMotivation(streak: number): string {
   if (streak > 0) {
     return '🌟 Streak started! Don\'t break it!';
   }
-  return '🌅 No active streak. Start one tomorrow at 5AM!';
+  return '🌅 No active streak. Start one tomorrow at 3AM!';
 }
 
 /**

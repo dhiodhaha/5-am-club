@@ -1,5 +1,5 @@
 import type { TimeCheckResult } from '../types/index.js';
-import { DEFAULT_TIMEZONE } from '../constants.js';
+import { DEFAULT_TIMEZONE, PRESENCE_WINDOW } from '../constants.js';
 
 /**
  * Get current time in a specific timezone
@@ -9,7 +9,7 @@ export function getCurrentTime(timezone: string = DEFAULT_TIMEZONE): Date {
 }
 
 /**
- * Check if current time is within presence window (5AM - 6AM, Monday - Friday)
+ * Check if current time is within presence window (3AM - 5:59AM, Monday - Friday)
  */
 export function isPresenceTime(timezone: string = DEFAULT_TIMEZONE): TimeCheckResult {
   const now = getCurrentTime(timezone);
@@ -20,8 +20,8 @@ export function isPresenceTime(timezone: string = DEFAULT_TIMEZONE): TimeCheckRe
   // Check if it's a weekday (Monday = 1, Friday = 5)
   const isWeekdayNow = dayOfWeek >= 1 && dayOfWeek <= 5;
 
-  // Check if it's between 5:00 AM and 5:59 AM (before 6:00 AM)
-  const isValidHour = hour === 5;
+  // Check if it's between 3:00 AM and 5:59 AM (before 6:00 AM)
+  const isValidHour = hour >= PRESENCE_WINDOW.START_HOUR && hour < PRESENCE_WINDOW.END_HOUR;
 
   if (!isWeekdayNow) {
     const daysUntilMonday = calculateDaysUntilMonday(dayOfWeek);
@@ -29,25 +29,25 @@ export function isPresenceTime(timezone: string = DEFAULT_TIMEZONE): TimeCheckRe
     return {
       isValid: false,
       reason: '📅 Presence recording is only available **Monday to Friday**.',
-      hint: `Come back on Monday at 5AM! (${daysUntilMonday} ${dayText} away)`,
+      hint: `Come back on Monday at 3AM! (${daysUntilMonday} ${dayText} away)`,
     };
   }
 
-  if (hour < 5) {
-    const minutesUntil = (5 - hour - 1) * 60 + (60 - minute);
+  if (hour < PRESENCE_WINDOW.START_HOUR) {
+    const minutesUntil = (PRESENCE_WINDOW.START_HOUR - hour - 1) * 60 + (60 - minute);
     return {
       isValid: false,
       reason: "⏰ It's too early! The presence window hasn't opened yet.",
-      hint: `Window opens at **5:00 AM** (in ${formatMinutes(minutesUntil)})`,
+      hint: `Window opens at **3:00 AM** (in ${formatMinutes(minutesUntil)})`,
     };
   }
 
   if (!isValidHour) {
-    const hoursUntilTomorrow = 24 - hour + 5;
+    const hoursUntilTomorrow = 24 - hour + PRESENCE_WINDOW.START_HOUR;
     return {
       isValid: false,
       reason: '⏰ The presence window has closed for today.',
-      hint: `Window is **5:00 AM - 6:00 AM**. Try again tomorrow! (in ~${hoursUntilTomorrow} hours)`,
+      hint: `Window is **3:00 AM - 6:00 AM**. Try again tomorrow! (in ~${hoursUntilTomorrow} hours)`,
     };
   }
 

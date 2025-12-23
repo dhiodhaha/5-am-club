@@ -286,7 +286,7 @@ async function handleSetTimezone(
         `**Timezone:** ${getTimezoneDisplay(timezone)}\n` +
         `**Current time:** ${getFormattedTime(timezone)}\n\n` +
         '**Schedule (in your timezone):**\n' +
-        '• Presence window: 5:00 AM - 5:59 AM (Mon-Fri)\n' +
+        '• Presence window: 3:00 AM - 5:59 AM (Mon-Fri)\n' +
         '• Leaderboard posted: 6:00 AM'
       )
       .setFooter({ text: `Updated by ${interaction.user.username}` })
@@ -385,7 +385,7 @@ function setActiveStatusDescription(
     `**Current time:** ${getFormattedTime(timezone)}\n` +
     `**Configured on:** ${setupDate}\n\n` +
     '**Schedule (in your timezone):**\n' +
-    '• Presence window: 5:00 AM - 5:59 AM (Mon-Fri)\n' +
+    '• Presence window: 3:00 AM - 5:59 AM (Mon-Fri)\n' +
     '• Leaderboard posted: 6:00 AM\n\n' +
     '**Testing:**\n' +
     '• Use `/setup test` to test anytime!\n\n' +

@@ -1,6 +1,6 @@
 # 🌅 5AM Club Discord Bot
 
-A Discord bot for tracking early morning presence. Members can check in between 5:00 AM - 6:00 AM on weekdays to build their consecutive day streak!
+A Discord bot for tracking early morning presence. Members can check in between 3:00 AM - 6:00 AM on weekdays to build their consecutive day streak!
 
 ## Features
 
@@ -25,13 +25,13 @@ After inviting the bot, an administrator needs to configure it:
 ```
 
 That's it! The bot will now:
-- Track presence in that channel (5:00-5:59 AM, Mon-Fri)
+- Track presence in that channel (3:00-5:59 AM, Mon-Fri)
 - Post streak leaderboard there at 6:00 AM
 - Use your server's timezone
 
 ## Testing the Bot (Preview Mode)
 
-Want to test without waiting until 5 AM? Admins can use:
+Want to test without waiting until 3 AM? Admins can use:
 
 ```
 /setup test Presence         → Preview what presence looks like
@@ -44,8 +44,8 @@ Want to test without waiting until 5 AM? Admins can use:
 
 | Action | Result |
 |--------|--------|
-| Send any message in 5AM channel | ✅ Counted as present (with quote reply) |
-| Use `/present` command | ✅ Counted as present (with quote) |
+| Send any message in 5AM channel | ✅ Counted as present (bot reacts with ✅) |
+| Use `/present` command | ✅ Counted as present (bot reacts with ✅) |
 | Send 2nd message (already present) | ❌ Not double counted (silent) |
 | Use `/present` after message | ❌ Not double counted (shows current streak) |
 | Message after `/present` | ❌ Not double counted (silent) |
@@ -76,11 +76,11 @@ Configure the 5AM Club bot for your server.
 ### `/present`
 Record your presence for the 5AM Club.
 
-- ⏰ Only works between **5:00 AM - 5:59 AM**
+- ⏰ Only works between **3:00 AM - 5:59 AM**
 - 📅 Only available **Monday - Friday**
 - 📍 Only works in the configured **5AM Club channel**
 - ✅ One check-in per day
-- 🔥 Shows your current streak + motivational quote
+- ✅ Bot reacts with ✅ emoji to confirm
 
 ### `/leaderboard`
 View the all-time total leaderboard (top 10).
@@ -223,8 +223,8 @@ guild_settings
 ## Auto Start/Stop with PM2
 
 The bot is configured to:
-- **Auto-shutdown** at 6:15 AM (built into the bot)
-- **Auto-start** at 4:45 AM (via PM2)
+- **Auto-shutdown** at 6:05 AM (built into the bot)
+- **Auto-start** at 2:55 AM (via PM2)
 
 ### Setup PM2
 
@@ -249,10 +249,10 @@ npm run pm2:status   # Check status
 
 | Time | Action |
 |------|--------|
-| 4:45 AM | Bot starts (PM2 cron) |
-| 5:00 - 5:59 AM | Presence window open |
+| 2:55 AM | Bot starts (PM2 cron) |
+| 3:00 - 5:59 AM | Presence window open |
 | 6:00 AM | Streak leaderboard in configured channel |
-| 6:15 AM | Bot shuts down |
+| 6:05 AM | Bot shuts down |
 
 ## Project Structure
 

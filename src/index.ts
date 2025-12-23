@@ -71,7 +71,7 @@ function pluralizeServers(count: number): string {
 function setPresenceStatus(readyClient: Client<true>): void {
   readyClient.user.setPresence({
     activities: [{
-      name: 'for /present at 5AM',
+      name: 'for /present at 3AM',
       type: ActivityType.Watching
     }],
     status: 'online'

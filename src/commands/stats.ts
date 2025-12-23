@@ -52,7 +52,7 @@ function buildStatsEmbed(user: User, stats: UserStats | null, streak: number): E
   if (!stats) {
     embed.setDescription(
       `<@${user.id}> hasn't recorded any presence yet!\n\n` +
-      'Start your journey with `/present` at 5AM! 🌅'
+      'Start your journey with `/present` at 3AM! 🌅'
     );
     return embed;
   }

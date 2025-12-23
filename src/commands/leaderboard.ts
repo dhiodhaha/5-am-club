@@ -43,7 +43,7 @@ function buildLeaderboardEmbed(leaderboard: LeaderboardEntry[]): EmbedBuilder {
   if (leaderboard.length === 0) {
     embed.addFields({
       name: '📊 Rankings',
-      value: '*No presence records yet!*\n\nStart your journey with `/present` at 5AM! 🌅',
+      value: '*No presence records yet!*\n\nStart your journey with `/present` at 3AM! 🌅',
     });
   } else {
     const rankingText = formatLeaderboardRankings(leaderboard);

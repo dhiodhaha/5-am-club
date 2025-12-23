@@ -3,7 +3,7 @@ import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.j
 import { getFiveAmChannelId, getGuildTimezone } from '../db/guildSettings.js';
 import { isPresenceTime } from '../utils/time.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
-import { getRandomPresenceQuote } from '../utils/quotes.js';
+import { PRESENCE_EMOJI } from '../constants.js';
 
 export const data = new SlashCommandBuilder()
   .setName('present')
@@ -57,12 +57,13 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
 
   try {
     await recordPresence(user.id, user.username, guildId);
-    const currentStreak = await getUserStreak(user.id, guildId);
     
-    await interaction.reply({
-      content: buildSuccessMessage(user.username, user.id, currentStreak),
-      allowedMentions: { users: [user.id] },
+    // Send minimal reply and react to it
+    const reply = await interaction.reply({
+      content: `🌅 **${user.username}** present @5AM Club!`,
+      fetchReply: true,
     });
+    await reply.react(PRESENCE_EMOJI);
   } catch (error) {
     console.error('Error recording presence:', error);
     await replyError(
@@ -83,34 +84,20 @@ async function replyAlreadyPresent(
   interaction: ChatInputCommandInteraction,
   streak: number
 ): Promise<void> {
-  const quote = getRandomPresenceQuote();
   const streakEmoji = getStreakEmoji(streak);
   const dayWord = pluralizeDays(streak);
 
   await interaction.reply({
     content: (
       `✅ **You're already present today!**\n\n` +
-      `${quote}\n\n` +
       `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}\n\n` +
-      `*Keep up the great work! See you tomorrow at 5AM!* 💪`
+      `*Keep up the great work! See you tomorrow!* 💪`
     ),
     ephemeral: true,
   });
 }
 
 function buildTimeErrorMessage(reason: string | undefined, hint: string | undefined): string {
-  const hintText = hint || '';
+  const hintText = hint ?? '';
   return `⏰ **Not the right time!**\n\n${reason}\n\n${hintText}`;
-}
-
-function buildSuccessMessage(username: string, userId: string, streak: number): string {
-  const quote = getRandomPresenceQuote();
-  const streakEmoji = getStreakEmoji(streak);
-  const dayWord = pluralizeDays(streak);
-  
-  return (
-    `🌅 **${username}** present today @5AM Club! <@${userId}>\n\n` +
-    `${quote}\n\n` +
-    `🔥 Current streak: **${streak}** ${dayWord} ${streakEmoji}`
-  );
 }
