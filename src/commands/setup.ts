@@ -23,6 +23,18 @@ import { hasRecordedToday, getUserStreak, getTodayPresence, getStreakLeaderboard
 import { getRandomPresenceQuote } from '../utils/quotes.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
 import { buildDailySummaryEmbed } from '../utils/embedBuilders.js';
+import {
+  addHoliday,
+  removeHoliday,
+  getHolidays,
+  getUpcomingHolidays,
+  syncApiHolidays,
+  getHolidayCounts,
+  isValidDateString,
+  formatDateRange,
+  Holiday,
+} from '../db/holidays.js';
+import { fetchCurrentYearHolidays } from '../services/holidayApi.js';
 
 export const data = new SlashCommandBuilder()
   .setName('setup')
@@ -75,6 +87,55 @@ export const data = new SlashCommandBuilder()
             { name: 'Leaderboard - Preview 6 AM announcement', value: 'leaderboard' }
           )
       )
+  )
+  .addSubcommandGroup(group =>
+    group
+      .setName('holiday')
+      .setDescription('Manage holidays (presence paused on holidays)')
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName('add')
+          .setDescription('Add a holiday period (presence will be paused)')
+          .addStringOption(option =>
+            option
+              .setName('start')
+              .setDescription('Start date (YYYY-MM-DD)')
+              .setRequired(true)
+          )
+          .addStringOption(option =>
+            option
+              .setName('end')
+              .setDescription('End date (YYYY-MM-DD), same as start if single day')
+              .setRequired(true)
+          )
+          .addStringOption(option =>
+            option
+              .setName('name')
+              .setDescription('Holiday name (e.g., "Liburan Natal")')
+              .setRequired(true)
+          )
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName('remove')
+          .setDescription('Remove a holiday')
+          .addIntegerOption(option =>
+            option
+              .setName('id')
+              .setDescription('Holiday ID (use /setup holiday list to see IDs)')
+              .setRequired(true)
+          )
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName('list')
+          .setDescription('View all configured holidays')
+      )
+      .addSubcommand(subcommand =>
+        subcommand
+          .setName('sync')
+          .setDescription('Sync Indonesian national holidays from API')
+      )
   );
 
 export async function execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -88,7 +149,14 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
     return;
   }
 
+  const subcommandGroup = interaction.options.getSubcommandGroup(false);
   const subcommand = interaction.options.getSubcommand();
+
+  // Handle holiday subcommand group
+  if (subcommandGroup === 'holiday') {
+    await handleHolidaySubcommand(interaction, guildId, subcommand);
+    return;
+  }
 
   switch (subcommand) {
     case 'channel':
@@ -326,20 +394,21 @@ async function handleStatus(
   interaction: ChatInputCommandInteraction,
   guildId: string
 ): Promise<void> {
+  await interaction.deferReply();
+  
   try {
     const settings = await getGuildSettings(guildId);
-    const embed = buildStatusEmbed(settings);
-    await interaction.reply({ embeds: [embed] });
+    const embed = await buildStatusEmbed(settings);
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('Error fetching status:', error);
-    await interaction.reply({
+    await interaction.editReply({
       content: '❌ Failed to fetch configuration. Please try again!',
-      ephemeral: true,
     });
   }
 }
 
-function buildStatusEmbed(settings: Awaited<ReturnType<typeof getGuildSettings>>): EmbedBuilder {
+async function buildStatusEmbed(settings: Awaited<ReturnType<typeof getGuildSettings>>): Promise<EmbedBuilder> {
   const embed = new EmbedBuilder()
     .setTitle('⚙️ 5AM Club Configuration')
     .setColor(0x3498DB)
@@ -348,7 +417,7 @@ function buildStatusEmbed(settings: Awaited<ReturnType<typeof getGuildSettings>>
   const isConfigured = settings && settings.fiveam_channel_id;
   
   if (isConfigured) {
-    setActiveStatusDescription(embed, settings);
+    await setActiveStatusDescription(embed, settings);
   } else {
     setNotConfiguredDescription(embed, settings);
   }
@@ -371,12 +440,16 @@ function setNotConfiguredDescription(
   );
 }
 
-function setActiveStatusDescription(
+async function setActiveStatusDescription(
   embed: EmbedBuilder,
   settings: NonNullable<Awaited<ReturnType<typeof getGuildSettings>>>
-): void {
+): Promise<void> {
   const timezone = settings.timezone || 'Asia/Jakarta';
   const setupDate = formatSetupDate(settings.setup_at);
+  
+  // Get upcoming holidays
+  const upcomingHolidays = await getUpcomingHolidays(settings.guild_id, 3);
+  const holidaySection = formatUpcomingHolidaysSection(upcomingHolidays);
 
   embed.setDescription(
     '**Status:** ✅ Active\n\n' +
@@ -387,10 +460,24 @@ function setActiveStatusDescription(
     '**Schedule (in your timezone):**\n' +
     '• Presence window: 3:00 AM - 5:59 AM (Mon-Fri)\n' +
     '• Leaderboard posted: 6:00 AM\n\n' +
+    holidaySection +
     '**Testing:**\n' +
     '• Use `/setup test` to test anytime!\n\n' +
     '*Use `/setup remove` to disable the bot.*'
   );
+}
+
+function formatUpcomingHolidaysSection(holidays: Holiday[]): string {
+  if (holidays.length === 0) {
+    return '';
+  }
+  
+  const lines = holidays.map(h => {
+    const dateDisplay = formatDateRange(h.start_date, h.end_date);
+    return `• ${h.name} (${dateDisplay})`;
+  });
+  
+  return `**🏖️ Upcoming Holidays:**\n${lines.join('\n')}\n\n`;
 }
 
 function getTimezoneFromSettings(
@@ -408,4 +495,222 @@ function formatSetupDate(setupAt: Date): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+// ============================================
+// Holiday Subcommand Handlers
+// ============================================
+
+async function handleHolidaySubcommand(
+  interaction: ChatInputCommandInteraction,
+  guildId: string,
+  subcommand: string
+): Promise<void> {
+  switch (subcommand) {
+    case 'add':
+      await handleHolidayAdd(interaction, guildId);
+      break;
+    case 'remove':
+      await handleHolidayRemove(interaction, guildId);
+      break;
+    case 'list':
+      await handleHolidayList(interaction, guildId);
+      break;
+    case 'sync':
+      await handleHolidaySync(interaction, guildId);
+      break;
+  }
+}
+
+async function handleHolidayAdd(
+  interaction: ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  const startDate = interaction.options.getString('start', true);
+  const endDate = interaction.options.getString('end', true);
+  const name = interaction.options.getString('name', true);
+
+  // Validate date formats
+  if (!isValidDateString(startDate)) {
+    await interaction.reply({
+      content: `❌ Invalid start date: \`${startDate}\`\n\nUse format: **YYYY-MM-DD** (e.g., 2025-12-25)`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  if (!isValidDateString(endDate)) {
+    await interaction.reply({
+      content: `❌ Invalid end date: \`${endDate}\`\n\nUse format: **YYYY-MM-DD** (e.g., 2025-12-31)`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Validate date range
+  if (new Date(endDate) < new Date(startDate)) {
+    await interaction.reply({
+      content: '❌ End date cannot be before start date!',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    const holiday = await addHoliday(guildId, startDate, endDate, name, interaction.user.id);
+    const dateDisplay = formatDateRange(startDate, endDate);
+
+    const embed = new EmbedBuilder()
+      .setTitle('🏖️ Holiday Added!')
+      .setColor(0x00FF00)
+      .setDescription(
+        `**Name:** ${name}\n` +
+        `**Date:** ${dateDisplay}\n` +
+        `**ID:** #${holiday.id}\n\n` +
+        '✅ Presence recording will be paused during this period.'
+      )
+      .setFooter({ text: `Added by ${interaction.user.username}` })
+      .setTimestamp();
+
+    await interaction.reply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error adding holiday:', error);
+    await interaction.reply({
+      content: '❌ Failed to add holiday. Please try again!',
+      ephemeral: true,
+    });
+  }
+}
+
+async function handleHolidayRemove(
+  interaction: ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  const holidayId = interaction.options.getInteger('id', true);
+
+  try {
+    const removed = await removeHoliday(guildId, holidayId);
+
+    if (!removed) {
+      await interaction.reply({
+        content: `❌ Holiday #${holidayId} not found.\n\nUse \`/setup holiday list\` to see available holidays.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: `✅ Holiday #${holidayId} has been removed.`,
+    });
+  } catch (error) {
+    console.error('Error removing holiday:', error);
+    await interaction.reply({
+      content: '❌ Failed to remove holiday. Please try again!',
+      ephemeral: true,
+    });
+  }
+}
+
+async function handleHolidayList(
+  interaction: ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  try {
+    const holidays = await getHolidays(guildId);
+    const counts = await getHolidayCounts(guildId);
+
+    const embed = new EmbedBuilder()
+      .setTitle('🏖️ Holiday Schedule')
+      .setColor(0x3498DB)
+      .setTimestamp();
+
+    if (holidays.length === 0) {
+      embed.setDescription(
+        '**No holidays configured.**\n\n' +
+        'Use `/setup holiday add` to add custom holidays, or\n' +
+        'Use `/setup holiday sync` to import Indonesian national holidays.'
+      );
+    } else {
+      const holidayList = formatHolidayList(holidays);
+      embed.setDescription(
+        `**Total:** ${holidays.length} holidays\n` +
+        `(🇮🇩 API: ${counts.api} | 📝 Manual: ${counts.manual})\n\n` +
+        holidayList
+      );
+    }
+
+    await interaction.reply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error listing holidays:', error);
+    await interaction.reply({
+      content: '❌ Failed to fetch holidays. Please try again!',
+      ephemeral: true,
+    });
+  }
+}
+
+function formatHolidayList(holidays: Holiday[]): string {
+  const lines: string[] = [];
+  
+  for (const holiday of holidays) {
+    const dateDisplay = formatDateRange(holiday.start_date, holiday.end_date);
+    const sourceEmoji = getSourceEmoji(holiday.source);
+    const typeEmoji = getTypeEmoji(holiday.type);
+    
+    lines.push(`${typeEmoji} **#${holiday.id}** ${holiday.name}\n   ${sourceEmoji} ${dateDisplay}`);
+  }
+  
+  return lines.join('\n\n');
+}
+
+function getSourceEmoji(source: string): string {
+  if (source === 'api') {
+    return '🇮🇩';
+  }
+  return '📝';
+}
+
+function getTypeEmoji(type: string): string {
+  switch (type) {
+    case 'national':
+      return '🎌';
+    case 'cuti_bersama':
+      return '🏠';
+    default:
+      return '📅';
+  }
+}
+
+async function handleHolidaySync(
+  interaction: ChatInputCommandInteraction,
+  guildId: string
+): Promise<void> {
+  await interaction.deferReply();
+
+  try {
+    const holidays = await fetchCurrentYearHolidays();
+    const insertedCount = await syncApiHolidays(guildId, holidays, interaction.user.id);
+    const currentYear = new Date().getFullYear();
+
+    const embed = new EmbedBuilder()
+      .setTitle('🇮🇩 Indonesian Holidays Synced!')
+      .setColor(0x00FF00)
+      .setDescription(
+        `**Year:** ${currentYear}\n` +
+        `**Imported:** ${insertedCount} holidays\n\n` +
+        '✅ National holidays and cuti bersama have been imported.\n\n' +
+        '*Existing API holidays for this year were replaced.*\n' +
+        '*Manual holidays are kept unchanged.*'
+      )
+      .setFooter({ text: `Synced by ${interaction.user.username}` })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('Error syncing holidays:', error);
+    await interaction.editReply({
+      content: '❌ Failed to sync holidays from API.\n\n' +
+        'This could be due to network issues. Please try again later.',
+    });
+  }
 }

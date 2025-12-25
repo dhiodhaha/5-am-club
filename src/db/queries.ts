@@ -1,5 +1,6 @@
 import sql from './connection.js';
 import type { LeaderboardEntry, TodayPresenceEntry, UserStats, StreakEntry } from '../types/index.js';
+import { getGuildTimezone } from './guildSettings.js';
 
 interface RecordPresenceResult {
   success: boolean;
@@ -27,7 +28,8 @@ export async function recordPresence(
   username: string,
   guildId: string
 ): Promise<RecordPresenceResult> {
-  const today = getTodayDateString();
+  const timezone = await getGuildTimezone(guildId);
+  const today = getDateStringInTimezone(timezone);
 
   try {
     await sql`
@@ -48,7 +50,8 @@ export async function recordPresence(
  * Check if user already recorded presence today
  */
 export async function hasRecordedToday(userId: string, guildId: string): Promise<boolean> {
-  const today = getTodayDateString();
+  const timezone = await getGuildTimezone(guildId);
+  const today = getDateStringInTimezone(timezone);
 
   const result = await sql`
     SELECT id FROM presence_records 
@@ -64,7 +67,8 @@ export async function hasRecordedToday(userId: string, guildId: string): Promise
  * Get today's presence records for a guild
  */
 export async function getTodayPresence(guildId: string): Promise<TodayPresenceEntry[]> {
-  const today = getTodayDateString();
+  const timezone = await getGuildTimezone(guildId);
+  const today = getDateStringInTimezone(timezone);
 
   const result = await sql`
     SELECT user_id, username, present_at
@@ -104,8 +108,9 @@ export async function getAllTimeLeaderboard(guildId: string): Promise<Leaderboar
  * Get streak leaderboard for a guild
  */
 export async function getStreakLeaderboard(guildId: string): Promise<StreakEntry[]> {
+  const timezone = await getGuildTimezone(guildId);
   const users = await getGuildUsers(guildId);
-  const streakEntries = await calculateStreaksForUsers(users, guildId);
+  const streakEntries = await calculateStreaksForUsers(users, guildId, timezone);
   
   return streakEntries
     .filter(entry => entry.current_streak > 0)
@@ -144,6 +149,7 @@ export async function getUserStats(userId: string, guildId: string): Promise<Use
  * Streak = consecutive weekdays (Mon-Fri) the user has been present
  */
 export async function getUserStreak(userId: string, guildId: string): Promise<number> {
+  const timezone = await getGuildTimezone(guildId);
   const presenceRecords = await getUserPresenceRecords(userId, guildId);
 
   if (presenceRecords.length === 0) {
@@ -151,7 +157,7 @@ export async function getUserStreak(userId: string, guildId: string): Promise<nu
   }
 
   const presentDates = new Set(presenceRecords.map(r => r.present_date));
-  return calculateConsecutiveWeekdayStreak(presentDates);
+  return calculateConsecutiveWeekdayStreak(presentDates, timezone);
 }
 
 // ============================================
@@ -159,15 +165,40 @@ export async function getUserStreak(userId: string, guildId: string): Promise<nu
 // ============================================
 
 /**
- * Get today's date string in YYYY-MM-DD format
- * Uses local timezone to avoid midnight issues
+ * Get current date string in YYYY-MM-DD format for a specific timezone
  */
-function getTodayDateString(): string {
+function getDateStringInTimezone(timezone: string): string {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  // Use Intl.DateTimeFormat to get date parts in the correct timezone
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  // 'en-CA' locale gives us YYYY-MM-DD format directly
+  return formatter.format(now);
+}
+
+/**
+ * Get a specific date's string in YYYY-MM-DD format for a timezone
+ */
+function formatDateInTimezone(date: Date, timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+}
+
+/**
+ * Get current date object adjusted to timezone
+ */
+function getCurrentDateInTimezone(timezone: string): Date {
+  const dateStr = getDateStringInTimezone(timezone);
+  return new Date(dateStr + 'T12:00:00'); // Use noon to avoid DST issues
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -199,11 +230,18 @@ async function getUserPresenceRecords(userId: string, guildId: string): Promise<
   return result as PresenceRecord[];
 }
 
-async function calculateStreaksForUsers(users: UserRecord[], guildId: string): Promise<StreakEntry[]> {
+async function calculateStreaksForUsers(
+  users: UserRecord[],
+  guildId: string,
+  timezone: string
+): Promise<StreakEntry[]> {
   const entries: StreakEntry[] = [];
   
   for (const user of users) {
-    const streak = await getUserStreak(user.user_id, guildId);
+    const presenceRecords = await getUserPresenceRecords(user.user_id, guildId);
+    const presentDates = new Set(presenceRecords.map(r => r.present_date));
+    const streak = calculateConsecutiveWeekdayStreak(presentDates, timezone);
+    
     entries.push({
       user_id: user.user_id,
       username: user.username,
@@ -214,9 +252,9 @@ async function calculateStreaksForUsers(users: UserRecord[], guildId: string): P
   return entries;
 }
 
-function calculateConsecutiveWeekdayStreak(presentDates: Set<string>): number {
+function calculateConsecutiveWeekdayStreak(presentDates: Set<string>, timezone: string): number {
   let streak = 0;
-  const checkDate = getStartDateForStreakCalculation();
+  const checkDate = getStartDateForStreakCalculation(timezone);
   const maxIterations = 260; // ~52 weeks * 5 weekdays
   
   for (let i = 0; i < maxIterations; i++) {
@@ -228,7 +266,8 @@ function calculateConsecutiveWeekdayStreak(presentDates: Set<string>): number {
       continue;
     }
     
-    const dateStr = checkDate.toISOString().split('T')[0];
+    // Format the date in the guild's timezone
+    const dateStr = formatDateInTimezone(checkDate, timezone);
     
     if (presentDates.has(dateStr)) {
       streak++;
@@ -241,8 +280,8 @@ function calculateConsecutiveWeekdayStreak(presentDates: Set<string>): number {
   return streak;
 }
 
-function getStartDateForStreakCalculation(): Date {
-  const today = new Date();
+function getStartDateForStreakCalculation(timezone: string): Date {
+  const today = getCurrentDateInTimezone(timezone);
   const dayOfWeek = today.getDay();
   
   // If today is weekend, start from last Friday

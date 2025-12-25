@@ -11,7 +11,8 @@ module.exports = {
     
     // Environment variables
     env: {
-      NODE_ENV: 'production'
+      NODE_ENV: 'production',
+      TZ: 'Asia/Jakarta'  // Important: PM2 cron uses this timezone
     },
     
     // Logging

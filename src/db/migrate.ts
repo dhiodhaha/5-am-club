@@ -8,6 +8,7 @@ async function migrate(): Promise<void> {
     await createPresenceIndex();
     await createLeaderboardView();
     await createGuildSettingsTable();
+    await createHolidaysTable();
 
     console.log('🎉 All migrations completed successfully!');
   } catch (error) {
@@ -82,6 +83,30 @@ async function createGuildSettingsTable(): Promise<void> {
     END $$;
   `;
   console.log('✅ Ensured timezone column exists');
+}
+
+async function createHolidaysTable(): Promise<void> {
+  await sql`
+    CREATE TABLE IF NOT EXISTS guild_holidays (
+      id SERIAL PRIMARY KEY,
+      guild_id VARCHAR(255) NOT NULL,
+      start_date DATE NOT NULL,
+      end_date DATE NOT NULL,
+      name VARCHAR(255) NOT NULL,
+      type VARCHAR(50) NOT NULL DEFAULT 'custom',
+      source VARCHAR(50) NOT NULL DEFAULT 'manual',
+      created_by VARCHAR(255),
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    )
+  `;
+  console.log('✅ Created guild_holidays table');
+
+  // Create index for efficient holiday lookups
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_holidays_guild_dates 
+    ON guild_holidays(guild_id, start_date, end_date)
+  `;
+  console.log('✅ Created index on guild_holidays');
 }
 
 migrate();

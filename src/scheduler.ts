@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Client, TextChannel, ChannelType } from 'discord.js';
 import { getTodayPresence, getStreakLeaderboard } from './db/queries.js';
 import { getAllConfiguredGuilds } from './db/guildSettings.js';
+import { isTodayHoliday } from './db/holidays.js';
 import { isAnnouncementTime, isWeekday } from './utils/time.js';
 import { buildDailySummaryEmbed } from './utils/embedBuilders.js';
 
@@ -75,6 +76,14 @@ async function checkAndAnnounceForGuilds(client: Client): Promise<void> {
       
       // Check if it's a weekday in this guild's timezone
       if (!isWeekday(timezone)) {
+        continue;
+      }
+      
+      // Check if today is a holiday
+      const holidayCheck = await isTodayHoliday(guild_id);
+      if (holidayCheck.isHoliday) {
+        console.log(`🏖️ Skipping announcement for guild ${guild_id}: ${holidayCheck.holidayName}`);
+        announcedToday.add(todayKey); // Mark as "announced" so we don't check again
         continue;
       }
       

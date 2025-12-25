@@ -1,6 +1,7 @@
 import { SlashCommandBuilder, ChatInputCommandInteraction } from 'discord.js';
 import { recordPresence, hasRecordedToday, getUserStreak } from '../db/queries.js';
 import { getFiveAmChannelId, getGuildTimezone } from '../db/guildSettings.js';
+import { isTodayHoliday } from '../db/holidays.js';
 import { isPresenceTime } from '../utils/time.js';
 import { getStreakEmoji, pluralizeDays } from '../utils/emoji.js';
 import { PRESENCE_EMOJI } from '../constants.js';
@@ -44,6 +45,18 @@ export async function execute(interaction: ChatInputCommandInteraction): Promise
   
   if (!timeCheck.isValid) {
     await replyError(interaction, buildTimeErrorMessage(timeCheck.reason, timeCheck.hint));
+    return;
+  }
+
+  // Check if today is a holiday
+  const holidayCheck = await isTodayHoliday(guildId);
+  if (holidayCheck.isHoliday) {
+    await replyError(
+      interaction,
+      `🏖️ **Today is a holiday!**\n\n` +
+      `**${holidayCheck.holidayName}**\n\n` +
+      `Presence recording is paused. Enjoy your day off! 🌴`
+    );
     return;
   }
 
