@@ -12,38 +12,55 @@ import { buildDailySummaryEmbed } from './utils/embedBuilders.js';
 export function startScheduler(client: Client): void {
   scheduleLeaderboardCheck(client);
   scheduleAutoShutdown(client);
-  
+
   console.log('✅ Scheduler started successfully');
-  console.log('📅 Leaderboard check: Every minute (per-guild timezone)');
+  console.log('📅 Leaderboard check: Every 5 minutes (per-guild timezone)');
   console.log('💤 Auto-shutdown: 6:05 AM (configured timezone)');
 }
 
 /**
- * Check every minute if any guild needs their 6 AM announcement
+ * Check every 5 minutes if any guild needs their 6 AM announcement
  * This allows each guild to have their own timezone
+ * Reduced from every minute to save database compute
  */
 function scheduleLeaderboardCheck(client: Client): void {
-  // Run every minute to check each guild's timezone
-  cron.schedule('* * * * *', async () => {
+  // Run every 5 minutes to check each guild's timezone
+  // This is sufficient since the announcement window is 5 minutes (6:00-6:05 AM)
+  cron.schedule('*/5 * * * *', async () => {
     await checkAndAnnounceForGuilds(client);
   });
-  
-  console.log('📅 Scheduled per-guild timezone leaderboard checks');
+
+  console.log('📅 Scheduled per-guild timezone leaderboard checks (every 5 min)');
 }
 
 function scheduleAutoShutdown(client: Client): void {
   // Shutdown at 6:05 AM in the configured timezone
   // Matches the PM2 start time (2:55 AM)
   const timezone = process.env.TZ || 'Asia/Jakarta';
-  
+
   cron.schedule('5 6 * * 1-5', () => {
-    console.log(`💤 Scheduled shutdown at 6:05 AM (${timezone})...`);
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    console.log('━'.repeat(50));
+    console.log(`💤 SHUTDOWN INITIATED`);
+    console.log(`🕐 Time: ${timestamp} (${timezone})`);
     console.log('🌙 Going to sleep. See you tomorrow at 2:55 AM!');
-    
+    console.log('━'.repeat(50));
+
     client.destroy();
     process.exit(0);
   }, { timezone });
-  
+
   console.log(`💤 Auto-shutdown scheduled for 6:05 AM (${timezone})`);
 }
 

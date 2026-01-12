@@ -1,6 +1,7 @@
 import sql from './connection.js';
 import type { LeaderboardEntry, TodayPresenceEntry, UserStats, StreakEntry } from '../types/index.js';
 import { getGuildTimezone } from './guildSettings.js';
+import { getCached, setCache, invalidateCacheKey, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 interface RecordPresenceResult {
   success: boolean;
@@ -42,6 +43,10 @@ export async function recordPresence(
       VALUES (${userId}, ${username}, ${guildId}, ${today})
       ON CONFLICT (user_id, guild_id, present_date) DO NOTHING
     `;
+
+    // Invalidate streak leaderboard cache (new presence affects streaks)
+    invalidateCacheKey(CACHE_KEYS.streakLeaderboard(guildId));
+
     return { success: true, alreadyPresent: false };
   } catch (error: unknown) {
     if (isUniqueConstraintError(error)) {
@@ -110,17 +115,30 @@ export async function getAllTimeLeaderboard(guildId: string): Promise<Leaderboar
 }
 
 /**
- * Get streak leaderboard for a guild
+ * Get streak leaderboard for a guild (cached for 5 minutes)
  */
 export async function getStreakLeaderboard(guildId: string): Promise<StreakEntry[]> {
+  const cacheKey = CACHE_KEYS.streakLeaderboard(guildId);
+
+  // Check cache first
+  const cached = getCached<StreakEntry[]>(cacheKey);
+  if (cached !== null) {
+    return cached;
+  }
+
   const timezone = await getGuildTimezone(guildId);
   const users = await getGuildUsers(guildId);
   const streakEntries = await calculateStreaksForUsers(users, guildId, timezone);
-  
-  return streakEntries
+
+  const result = streakEntries
     .filter(entry => entry.current_streak > 0)
     .sort((a, b) => b.current_streak - a.current_streak)
     .slice(0, 10);
+
+  // Cache the result
+  setCache(cacheKey, result, CACHE_TTL.STREAK_LEADERBOARD);
+
+  return result;
 }
 
 // ============================================
@@ -231,9 +249,17 @@ function dateToString(date: Date | string): string {
 }
 
 /**
- * Get all holiday dates for a guild as a Set of YYYY-MM-DD strings
+ * Get all holiday dates for a guild as a Set of YYYY-MM-DD strings (cached for 24 hours)
  */
 async function getGuildHolidayDates(guildId: string): Promise<Set<string>> {
+  const cacheKey = CACHE_KEYS.holidays(guildId);
+
+  // Check cache first
+  const cached = getCached<string[]>(cacheKey);
+  if (cached !== null) {
+    return new Set(cached);
+  }
+
   const holidays = await sql`
     SELECT start_date, end_date
     FROM guild_holidays
@@ -253,6 +279,9 @@ async function getGuildHolidayDates(guildId: string): Promise<Set<string>> {
       holidayDates.add(dateToString(d));
     }
   }
+
+  // Cache the result as array (Set can't be cached directly)
+  setCache(cacheKey, Array.from(holidayDates), CACHE_TTL.HOLIDAYS);
 
   return holidayDates;
 }
@@ -282,12 +311,36 @@ async function calculateStreaksForUsers(
   guildId: string,
   timezone: string
 ): Promise<StreakEntry[]> {
-  const entries: StreakEntry[] = [];
-  const holidayDates = await getGuildHolidayDates(guildId);
+  if (users.length === 0) {
+    return [];
+  }
 
+  const holidayDates = await getGuildHolidayDates(guildId);
+  const userIds = users.map(u => u.user_id);
+
+  // BATCH QUERY: Fetch all presence records for all users in ONE query
+  const allRecords = await sql`
+    SELECT user_id, present_date
+    FROM presence_records
+    WHERE guild_id = ${guildId}
+      AND user_id = ANY(${userIds})
+    ORDER BY user_id, present_date DESC
+  `;
+
+  // Group records by user_id in memory
+  const recordsByUser = new Map<string, Set<string>>();
+  for (const record of allRecords as { user_id: string; present_date: Date | string }[]) {
+    const userId = record.user_id;
+    if (!recordsByUser.has(userId)) {
+      recordsByUser.set(userId, new Set());
+    }
+    recordsByUser.get(userId)!.add(dateToString(record.present_date));
+  }
+
+  // Calculate streak for each user (no more individual queries!)
+  const entries: StreakEntry[] = [];
   for (const user of users) {
-    const presenceRecords = await getUserPresenceRecords(user.user_id, guildId);
-    const presentDates = new Set(presenceRecords.map(r => dateToString(r.present_date)));
+    const presentDates = recordsByUser.get(user.user_id) ?? new Set();
     const streak = calculateConsecutiveWeekdayStreak(presentDates, timezone, holidayDates);
 
     entries.push({
