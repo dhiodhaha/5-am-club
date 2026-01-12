@@ -8,12 +8,17 @@ interface RecordPresenceResult {
 }
 
 interface PresenceRecord {
-  present_date: string;
+  present_date: Date | string;
 }
 
 interface UserRecord {
   user_id: string;
   username: string;
+}
+
+interface HolidayRecord {
+  start_date: Date | string;
+  end_date: Date | string;
 }
 
 // ============================================
@@ -147,6 +152,7 @@ export async function getUserStats(userId: string, guildId: string): Promise<Use
 /**
  * Calculate current streak for a user
  * Streak = consecutive weekdays (Mon-Fri) the user has been present
+ * Holidays are also skipped (like weekends)
  */
 export async function getUserStreak(userId: string, guildId: string): Promise<number> {
   const timezone = await getGuildTimezone(guildId);
@@ -156,8 +162,9 @@ export async function getUserStreak(userId: string, guildId: string): Promise<nu
     return 0;
   }
 
-  const presentDates = new Set(presenceRecords.map(r => r.present_date));
-  return calculateConsecutiveWeekdayStreak(presentDates, timezone);
+  const presentDates = new Set(presenceRecords.map(r => dateToString(r.present_date)));
+  const holidayDates = await getGuildHolidayDates(guildId);
+  return calculateConsecutiveWeekdayStreak(presentDates, timezone, holidayDates);
 }
 
 // ============================================
@@ -210,6 +217,46 @@ function isUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+/**
+ * Convert database date (which comes as Date object) to YYYY-MM-DD string
+ */
+function dateToString(date: Date | string): string {
+  if (date instanceof Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(date);
+}
+
+/**
+ * Get all holiday dates for a guild as a Set of YYYY-MM-DD strings
+ */
+async function getGuildHolidayDates(guildId: string): Promise<Set<string>> {
+  const holidays = await sql`
+    SELECT start_date, end_date
+    FROM guild_holidays
+    WHERE guild_id = ${guildId}
+  `;
+
+  const holidayDates = new Set<string>();
+
+  for (const h of holidays as HolidayRecord[]) {
+    const startStr = dateToString(h.start_date);
+    const endStr = dateToString(h.end_date);
+    const start = new Date(startStr + 'T12:00:00');
+    const end = new Date(endStr + 'T12:00:00');
+
+    // Add all dates in the range
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      holidayDates.add(dateToString(d));
+    }
+  }
+
+  return holidayDates;
+}
+
 async function getGuildUsers(guildId: string): Promise<UserRecord[]> {
   const result = await sql`
     SELECT DISTINCT user_id, username
@@ -236,39 +283,77 @@ async function calculateStreaksForUsers(
   timezone: string
 ): Promise<StreakEntry[]> {
   const entries: StreakEntry[] = [];
-  
+  const holidayDates = await getGuildHolidayDates(guildId);
+
   for (const user of users) {
     const presenceRecords = await getUserPresenceRecords(user.user_id, guildId);
-    const presentDates = new Set(presenceRecords.map(r => r.present_date));
-    const streak = calculateConsecutiveWeekdayStreak(presentDates, timezone);
-    
+    const presentDates = new Set(presenceRecords.map(r => dateToString(r.present_date)));
+    const streak = calculateConsecutiveWeekdayStreak(presentDates, timezone, holidayDates);
+
     entries.push({
       user_id: user.user_id,
       username: user.username,
       current_streak: streak
     });
   }
-  
+
   return entries;
 }
 
-function calculateConsecutiveWeekdayStreak(presentDates: Set<string>, timezone: string): number {
+function calculateConsecutiveWeekdayStreak(
+  presentDates: Set<string>,
+  timezone: string,
+  holidayDates: Set<string> = new Set()
+): number {
   let streak = 0;
-  const checkDate = getStartDateForStreakCalculation(timezone);
+  const checkDate = getStartDateForStreakCalculation(timezone, holidayDates);
   const maxIterations = 260; // ~52 weeks * 5 weekdays
-  
+
+  // Check if we should start from today or yesterday (or previous valid weekday)
+  // If we haven't posted today yet, we shouldn't break the streak immediately.
+  // We should check if the streak was active as of the previous valid weekday.
+  // BUT: We only do this if the checkDate is actually TODAY.
+  // If checkDate is in the past (e.g. Friday, and today is Saturday), we do NOT skip it.
+
+  const realToday = getCurrentDateInTimezone(timezone);
+  const realTodayStr = formatDateInTimezone(realToday, timezone);
+  const checkDateStr = formatDateInTimezone(checkDate, timezone);
+
+  const isCheckDateToday = (realTodayStr === checkDateStr);
+
+  if (!presentDates.has(checkDateStr) && isCheckDateToday) {
+    // Today is a weekday, matches our check start, but we haven't posted yet.
+    // Check previous valid weekday instead.
+    checkDate.setDate(checkDate.getDate() - 1);
+
+    // Skip weekends and holidays
+    while (true) {
+      const day = checkDate.getDay();
+      const dateStr = formatDateInTimezone(checkDate, timezone);
+      if (day === 0 || day === 6 || holidayDates.has(dateStr)) {
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+  }
+
   for (let i = 0; i < maxIterations; i++) {
     const day = checkDate.getDay();
-    
+    const dateStr = formatDateInTimezone(checkDate, timezone);
+
     // Skip weekends
     if (day === 0 || day === 6) {
       checkDate.setDate(checkDate.getDate() - 1);
       continue;
     }
-    
-    // Format the date in the guild's timezone
-    const dateStr = formatDateInTimezone(checkDate, timezone);
-    
+
+    // Skip holidays
+    if (holidayDates.has(dateStr)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+      continue;
+    }
+
     if (presentDates.has(dateStr)) {
       streak++;
       checkDate.setDate(checkDate.getDate() - 1);
@@ -276,20 +361,36 @@ function calculateConsecutiveWeekdayStreak(presentDates: Set<string>, timezone: 
       break; // Streak broken
     }
   }
-  
+
   return streak;
 }
 
-function getStartDateForStreakCalculation(timezone: string): Date {
+function getStartDateForStreakCalculation(timezone: string, holidayDates: Set<string> = new Set()): Date {
   const today = getCurrentDateInTimezone(timezone);
-  const dayOfWeek = today.getDay();
-  
-  // If today is weekend, start from last Friday
-  if (dayOfWeek === 0) { // Sunday
-    today.setDate(today.getDate() - 2);
-  } else if (dayOfWeek === 6) { // Saturday
-    today.setDate(today.getDate() - 1);
+
+  // Skip weekends and holidays to find the first valid check date
+  while (true) {
+    const dayOfWeek = today.getDay();
+    const dateStr = formatDateInTimezone(today, timezone);
+
+    // Skip weekends
+    if (dayOfWeek === 0) { // Sunday
+      today.setDate(today.getDate() - 2);
+      continue;
+    }
+    if (dayOfWeek === 6) { // Saturday
+      today.setDate(today.getDate() - 1);
+      continue;
+    }
+
+    // Skip holidays
+    if (holidayDates.has(dateStr)) {
+      today.setDate(today.getDate() - 1);
+      continue;
+    }
+
+    break;
   }
-  
+
   return today;
 }

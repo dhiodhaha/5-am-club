@@ -15,7 +15,7 @@ export function startScheduler(client: Client): void {
   
   console.log('✅ Scheduler started successfully');
   console.log('📅 Leaderboard check: Every minute (per-guild timezone)');
-  console.log('💤 Auto-shutdown: 6:05 AM system time');
+  console.log('💤 Auto-shutdown: 6:05 AM (configured timezone)');
 }
 
 /**
@@ -32,19 +32,19 @@ function scheduleLeaderboardCheck(client: Client): void {
 }
 
 function scheduleAutoShutdown(client: Client): void {
-  // Shutdown at 6:05 AM system time (for PM2 setups)
-  // This uses system timezone since PM2 restarts at system time
-  const systemTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Shutdown at 6:05 AM in the configured timezone
+  // Matches the PM2 start time (2:55 AM)
+  const timezone = process.env.TZ || 'Asia/Jakarta';
   
   cron.schedule('5 6 * * 1-5', () => {
-    console.log('💤 Scheduled shutdown at 6:05 AM...');
+    console.log(`💤 Scheduled shutdown at 6:05 AM (${timezone})...`);
     console.log('🌙 Going to sleep. See you tomorrow at 2:55 AM!');
     
     client.destroy();
     process.exit(0);
-  }, { timezone: systemTimezone });
+  }, { timezone });
   
-  console.log(`💤 Auto-shutdown scheduled for 6:05 AM (${systemTimezone})`);
+  console.log(`💤 Auto-shutdown scheduled for 6:05 AM (${timezone})`);
 }
 
 // Track which guilds have been announced today to avoid duplicates
