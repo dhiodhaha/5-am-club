@@ -1,13 +1,31 @@
-import { 
-  Client, 
-  Collection, 
-  Events, 
-  GatewayIntentBits, 
+import {
+  Client,
+  Collection,
+  Events,
+  GatewayIntentBits,
   ChatInputCommandInteraction,
   AutocompleteInteraction,
   ActivityType
 } from 'discord.js';
 import 'dotenv/config';
+
+// Log process start immediately (helps track unexpected restarts)
+const processStartTime = new Date();
+const tz = process.env.TZ || 'Asia/Jakarta';
+console.log('━'.repeat(50));
+console.log('🚀 PROCESS STARTED');
+console.log(`🕐 ${processStartTime.toLocaleString('en-US', {
+  timeZone: tz,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+})} (${tz})`);
+console.log(`📋 PID: ${process.pid}`);
+console.log('━'.repeat(50));
 
 import * as present from './commands/present.js';
 import * as leaderboard from './commands/leaderboard.js';
@@ -51,9 +69,24 @@ client.once(Events.ClientReady, (readyClient) => {
 function logStartupMessage(readyClient: Client<true>): void {
   const guildCount = readyClient.guilds.cache.size;
   const guildText = pluralizeServers(guildCount);
-  
+  const now = new Date();
+  const timezone = process.env.TZ || 'Asia/Jakarta';
+
+  // Format timestamp in configured timezone
+  const timestamp = now.toLocaleString('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
   console.log('━'.repeat(50));
   console.log('🌅 5AM Club Bot is online!');
+  console.log(`🕐 Started at: ${timestamp} (${timezone})`);
   console.log(`📛 Logged in as: ${readyClient.user.tag}`);
   console.log(`🌐 Serving ${guildCount} ${guildText}`);
   console.log('📨 Message presence detection: ENABLED');

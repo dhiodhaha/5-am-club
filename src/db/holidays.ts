@@ -5,6 +5,7 @@
 import sql from './connection.js';
 import { getGuildTimezone } from './guildSettings.js';
 import { ApiHolidayData, getHolidayType } from '../services/holidayApi.js';
+import { getCached, setCache, invalidateCache, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 export interface Holiday {
   id: number;
@@ -42,7 +43,10 @@ export async function addHoliday(
     VALUES (${guildId}, ${startDate}, ${endDate}, ${name}, 'custom', 'manual', ${createdBy})
     RETURNING *
   `;
-  
+
+  // Invalidate holidays cache
+  invalidateCache(`holidays:${guildId}`);
+
   return result[0] as Holiday;
 }
 
@@ -55,7 +59,10 @@ export async function removeHoliday(guildId: string, holidayId: number): Promise
     WHERE id = ${holidayId} AND guild_id = ${guildId}
     RETURNING id
   `;
-  
+
+  // Invalidate holidays cache
+  invalidateCache(`holidays:${guildId}`);
+
   return result.length > 0;
 }
 
@@ -146,26 +153,29 @@ export async function syncApiHolidays(
   
   // Insert new holidays from API
   let insertedCount = 0;
-  
+
   for (const holiday of holidays) {
     const holidayType = getHolidayType(holiday.is_national_holiday);
-    
+
     await sql`
       INSERT INTO guild_holidays (guild_id, start_date, end_date, name, type, source, created_by)
       VALUES (
-        ${guildId}, 
-        ${holiday.holiday_date}, 
-        ${holiday.holiday_date}, 
-        ${holiday.holiday_name}, 
-        ${holidayType}, 
-        'api', 
+        ${guildId},
+        ${holiday.holiday_date},
+        ${holiday.holiday_date},
+        ${holiday.holiday_name},
+        ${holidayType},
+        'api',
         ${syncedBy}
       )
     `;
-    
+
     insertedCount++;
   }
-  
+
+  // Invalidate holidays cache after sync
+  invalidateCache(`holidays:${guildId}`);
+
   return insertedCount;
 }
 
