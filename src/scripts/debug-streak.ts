@@ -1,12 +1,57 @@
-
-import {
-  getStartDateForStreakCalculation,
-  formatDateInTimezone,
-  getCurrentDateInTimezone
-} from '../db/queries.js'; // Adjust path if needed
 import sql from '../db/connection.js';
 
-// Re-implement logic with logging
+// ==========================================
+// HELPER FUNCTIONS (local copies for standalone script)
+// ==========================================
+
+function getDateStringInTimezone(timezone: string): string {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(now);
+}
+
+function formatDateInTimezone(date: Date, timezone: string): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  return formatter.format(date);
+}
+
+function getCurrentDateInTimezone(timezone: string): Date {
+  const dateStr = getDateStringInTimezone(timezone);
+  return new Date(dateStr + 'T12:00:00');
+}
+
+function getStartDateForStreakCalculation(timezone: string): Date {
+  const today = getCurrentDateInTimezone(timezone);
+  const dayOfWeek = today.getDay();
+  if (dayOfWeek === 0) today.setDate(today.getDate() - 2);
+  else if (dayOfWeek === 6) today.setDate(today.getDate() - 1);
+  return today;
+}
+
+function dateToString(date: Date | string): string {
+  if (date instanceof Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(date);
+}
+
+// ==========================================
+// DEBUG LOGIC
+// ==========================================
+
 function debugStreak(presentDates: Set<string>, timezone: string) {
   let streak = 0;
   const checkDate = getStartDateForStreakCalculation(timezone);
@@ -31,11 +76,11 @@ function debugStreak(presentDates: Set<string>, timezone: string) {
     // Adjust for weekend
     const day = checkDate.getDay();
     if (day === 0) {
-        checkDate.setDate(checkDate.getDate() - 2);
-        console.log(`   ℹ️  Skipped weekend -> Friday`);
+      checkDate.setDate(checkDate.getDate() - 2);
+      console.log(`   ℹ️  Skipped weekend -> Friday`);
     } else if (day === 6) {
-        checkDate.setDate(checkDate.getDate() - 1);
-        console.log(`   ℹ️  Skipped weekend -> Friday`);
+      checkDate.setDate(checkDate.getDate() - 1);
+      console.log(`   ℹ️  Skipped weekend -> Friday`);
     }
   }
 
@@ -85,13 +130,13 @@ async function run() {
     // 2. Get Records
     console.log(`Fetching records for user ${userId}...`);
     const records = await sql`
-        SELECT present_date 
-        FROM presence_records 
+        SELECT present_date
+        FROM presence_records
         WHERE user_id = ${userId} AND guild_id = ${guildId}
         ORDER BY present_date DESC
     `;
 
-    const presentDates = new Set(records.map(r => r.present_date));
+    const presentDates = new Set(records.map(r => dateToString(r.present_date)));
     console.log(`Found ${presentDates.size} records.`);
     console.log(`Latest 5: ${[...presentDates].slice(0, 5).join(', ')}`);
 

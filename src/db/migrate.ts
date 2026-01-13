@@ -6,6 +6,7 @@ async function migrate(): Promise<void> {
   try {
     await createPresenceRecordsTable();
     await createPresenceIndex();
+    await createUserPresenceIndex();
     await createLeaderboardView();
     await createGuildSettingsTable();
     await createHolidaysTable();
@@ -46,6 +47,14 @@ async function createPresenceIndex(): Promise<void> {
     ON presence_records(user_id, guild_id, present_date DESC)
   `;
   console.log('✅ Created index on user_id, guild_id, present_date');
+}
+
+async function createUserPresenceIndex(): Promise<void> {
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_presence_user_guild
+    ON presence_records(user_id, guild_id)
+  `;
+  console.log('✅ Created index on user_id and guild_id');
 }
 
 async function createLeaderboardView(): Promise<void> {

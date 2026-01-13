@@ -1,13 +1,7 @@
-
 import sql from '../db/connection.js';
-import { 
-  getStartDateForStreakCalculation, 
-  formatDateInTimezone, 
-  getCurrentDateInTimezone 
-} from '../db/queries.js';
 
 // ==========================================
-// HELPER FUNCTIONS (Copied to ensure standalone execution)
+// HELPER FUNCTIONS (local copies for standalone script)
 // ==========================================
 function getDateStringInTimezone(timezone: string): string {
   const now = new Date();
@@ -41,6 +35,16 @@ function getStartDateForStreakCalculation(timezone: string): Date {
   if (dayOfWeek === 0) today.setDate(today.getDate() - 2);
   else if (dayOfWeek === 6) today.setDate(today.getDate() - 1);
   return today;
+}
+
+function dateToString(date: Date | string): string {
+  if (date instanceof Date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return String(date);
 }
 
 // ==========================================
@@ -109,7 +113,7 @@ async function run() {
         WHERE user_id = ${userId} AND guild_id = ${guildId}
         ORDER BY present_date DESC
     `;
-    const presentDates = new Set(records.map(r => r.present_date));
+    const presentDates = new Set(records.map(r => dateToString(r.present_date)));
     
     // 2. Calculate Current
     const currentStreak = calculateStreak(presentDates, timezone);

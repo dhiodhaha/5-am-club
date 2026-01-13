@@ -5,7 +5,7 @@
 import sql from './connection.js';
 import { getGuildTimezone } from './guildSettings.js';
 import { ApiHolidayData, getHolidayType } from '../services/holidayApi.js';
-import { getCached, setCache, invalidateCache, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
+import { getCached, setCache, invalidateCachePattern, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 export interface Holiday {
   id: number;
@@ -44,9 +44,7 @@ export async function addHoliday(
     RETURNING *
   `;
 
-  // Invalidate holidays cache
-  invalidateCache(`holidays:${guildId}`);
-
+  invalidateCachePattern(CACHE_KEYS.holidays(guildId));
   return result[0] as Holiday;
 }
 
@@ -60,9 +58,9 @@ export async function removeHoliday(guildId: string, holidayId: number): Promise
     RETURNING id
   `;
 
-  // Invalidate holidays cache
-  invalidateCache(`holidays:${guildId}`);
-
+  if (result.length > 0) {
+    invalidateCachePattern(CACHE_KEYS.holidays(guildId));
+  }
   return result.length > 0;
 }
 
@@ -105,7 +103,13 @@ export async function getUpcomingHolidays(guildId: string, limit: number = 5): P
 export async function checkHoliday(guildId: string, date?: string): Promise<HolidayCheck> {
   const timezone = await getGuildTimezone(guildId);
   const checkDate = date ?? getDateStringInTimezone(timezone);
-  
+
+  const cacheKey = `${CACHE_KEYS.holidays(guildId)}:${checkDate}`;
+  const cached = getCached<HolidayCheck>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const result = await sql`
     SELECT name
     FROM guild_holidays
@@ -113,12 +117,13 @@ export async function checkHoliday(guildId: string, date?: string): Promise<Holi
       AND ${checkDate} BETWEEN start_date AND end_date
     LIMIT 1
   `;
-  
-  if (result.length === 0) {
-    return { isHoliday: false, holidayName: null };
-  }
-  
-  return { isHoliday: true, holidayName: result[0].name as string };
+
+  const holidayCheck: HolidayCheck = result.length === 0
+    ? { isHoliday: false, holidayName: null }
+    : { isHoliday: true, holidayName: result[0].name as string };
+
+  setCache(cacheKey, holidayCheck, CACHE_TTL.HOLIDAYS);
+  return holidayCheck;
 }
 
 /**
@@ -173,9 +178,7 @@ export async function syncApiHolidays(
     insertedCount++;
   }
 
-  // Invalidate holidays cache after sync
-  invalidateCache(`holidays:${guildId}`);
-
+  invalidateCachePattern(CACHE_KEYS.holidays(guildId));
   return insertedCount;
 }
 

@@ -1,6 +1,6 @@
 import sql from './connection.js';
 import { DEFAULT_TIMEZONE } from '../constants.js';
-import { getCached, setCache, invalidateCacheKey, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
+import { getCached, setCache, invalidateCache, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 export interface GuildSettings {
   guild_id: string;
@@ -16,10 +16,8 @@ export interface GuildSettings {
  */
 export async function getGuildSettings(guildId: string): Promise<GuildSettings | null> {
   const cacheKey = CACHE_KEYS.guildSettings(guildId);
-
-  // Check cache first
-  const cached = getCached<GuildSettings | null>(cacheKey);
-  if (cached !== null) {
+  const cached = getCached<GuildSettings>(cacheKey);
+  if (cached) {
     return cached;
   }
 
@@ -31,9 +29,8 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
 
   const settings = result.length === 0 ? null : (result[0] as GuildSettings);
 
-  // Cache the result (even if null)
+  const settings = result[0] as GuildSettings;
   setCache(cacheKey, settings, CACHE_TTL.GUILD_SETTINGS);
-
   return settings;
 }
 
@@ -70,9 +67,7 @@ export async function setFiveAmChannel(
       setup_by_user_id = ${setupByUserId},
       updated_at = NOW()
   `;
-
-  // Invalidate cache
-  invalidateCacheKey(CACHE_KEYS.guildSettings(guildId));
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
@@ -92,9 +87,7 @@ export async function setGuildTimezone(
       setup_by_user_id = ${setupByUserId},
       updated_at = NOW()
   `;
-
-  // Invalidate cache
-  invalidateCacheKey(CACHE_KEYS.guildSettings(guildId));
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
@@ -106,9 +99,7 @@ export async function removeFiveAmChannel(guildId: string): Promise<void> {
     SET fiveam_channel_id = NULL, updated_at = NOW()
     WHERE guild_id = ${guildId}
   `;
-
-  // Invalidate cache
-  invalidateCacheKey(CACHE_KEYS.guildSettings(guildId));
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
