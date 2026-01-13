@@ -26,7 +26,9 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
     FROM guild_settings
     WHERE guild_id = ${guildId}
   `;
-
+  /**
+   * Guild settings fix
+   */
   if (result.length === 0) {
     return null;
   }
