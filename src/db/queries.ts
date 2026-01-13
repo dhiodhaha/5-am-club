@@ -1,6 +1,7 @@
 import sql from './connection.js';
 import type { LeaderboardEntry, TodayPresenceEntry, UserStats, StreakEntry } from '../types/index.js';
 import { getGuildTimezone } from './guildSettings.js';
+import { getCached, setCache, invalidateCache, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 interface RecordPresenceResult {
   success: boolean;
@@ -37,6 +38,7 @@ export async function recordPresence(
       VALUES (${userId}, ${username}, ${guildId}, ${today})
       ON CONFLICT (user_id, guild_id, present_date) DO NOTHING
     `;
+    invalidateCache(CACHE_KEYS.streakLeaderboard(guildId));
     return { success: true, alreadyPresent: false };
   } catch (error: unknown) {
     if (isUniqueConstraintError(error)) {
@@ -108,14 +110,23 @@ export async function getAllTimeLeaderboard(guildId: string): Promise<Leaderboar
  * Get streak leaderboard for a guild
  */
 export async function getStreakLeaderboard(guildId: string): Promise<StreakEntry[]> {
+  const cacheKey = CACHE_KEYS.streakLeaderboard(guildId);
+  const cached = getCached<StreakEntry[]>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const timezone = await getGuildTimezone(guildId);
   const users = await getGuildUsers(guildId);
   const streakEntries = await calculateStreaksForUsers(users, guildId, timezone);
-  
-  return streakEntries
+
+  const leaderboard = streakEntries
     .filter(entry => entry.current_streak > 0)
     .sort((a, b) => b.current_streak - a.current_streak)
     .slice(0, 10);
+
+  setCache(cacheKey, leaderboard, CACHE_TTL.STREAK_LEADERBOARD);
+  return leaderboard;
 }
 
 // ============================================

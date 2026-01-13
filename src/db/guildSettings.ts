@@ -1,5 +1,6 @@
 import sql from './connection.js';
 import { DEFAULT_TIMEZONE } from '../constants.js';
+import { getCached, setCache, invalidateCache, CACHE_TTL, CACHE_KEYS } from '../utils/cache.js';
 
 export interface GuildSettings {
   guild_id: string;
@@ -14,9 +15,15 @@ export interface GuildSettings {
  * Get guild settings
  */
 export async function getGuildSettings(guildId: string): Promise<GuildSettings | null> {
+  const cacheKey = CACHE_KEYS.guildSettings(guildId);
+  const cached = getCached<GuildSettings>(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
   const result = await sql`
     SELECT guild_id, fiveam_channel_id, timezone, setup_by_user_id, setup_at, updated_at
-    FROM guild_settings 
+    FROM guild_settings
     WHERE guild_id = ${guildId}
   `;
 
@@ -24,7 +31,9 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
     return null;
   }
 
-  return result[0] as GuildSettings;
+  const settings = result[0] as GuildSettings;
+  setCache(cacheKey, settings, CACHE_TTL.GUILD_SETTINGS);
+  return settings;
 }
 
 /**
@@ -54,12 +63,13 @@ export async function setFiveAmChannel(
   await sql`
     INSERT INTO guild_settings (guild_id, fiveam_channel_id, setup_by_user_id, setup_at, updated_at)
     VALUES (${guildId}, ${channelId}, ${setupByUserId}, NOW(), NOW())
-    ON CONFLICT (guild_id) 
-    DO UPDATE SET 
+    ON CONFLICT (guild_id)
+    DO UPDATE SET
       fiveam_channel_id = ${channelId},
       setup_by_user_id = ${setupByUserId},
       updated_at = NOW()
   `;
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
@@ -73,12 +83,13 @@ export async function setGuildTimezone(
   await sql`
     INSERT INTO guild_settings (guild_id, timezone, setup_by_user_id, setup_at, updated_at)
     VALUES (${guildId}, ${timezone}, ${setupByUserId}, NOW(), NOW())
-    ON CONFLICT (guild_id) 
-    DO UPDATE SET 
+    ON CONFLICT (guild_id)
+    DO UPDATE SET
       timezone = ${timezone},
       setup_by_user_id = ${setupByUserId},
       updated_at = NOW()
   `;
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
@@ -86,10 +97,11 @@ export async function setGuildTimezone(
  */
 export async function removeFiveAmChannel(guildId: string): Promise<void> {
   await sql`
-    UPDATE guild_settings 
+    UPDATE guild_settings
     SET fiveam_channel_id = NULL, updated_at = NOW()
     WHERE guild_id = ${guildId}
   `;
+  invalidateCache(CACHE_KEYS.guildSettings(guildId));
 }
 
 /**
