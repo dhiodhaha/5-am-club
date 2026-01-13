@@ -26,8 +26,12 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
     FROM guild_settings
     WHERE guild_id = ${guildId}
   `;
-
-  const settings = result.length === 0 ? null : (result[0] as GuildSettings);
+  /**
+   * Guild settings fix
+   */
+  if (result.length === 0) {
+    return null;
+  }
 
   const settings = result[0] as GuildSettings;
   setCache(cacheKey, settings, CACHE_TTL.GUILD_SETTINGS);
