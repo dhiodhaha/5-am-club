@@ -40,6 +40,13 @@ async function createPresenceIndex(): Promise<void> {
     ON presence_records(guild_id, present_date)
   `;
   console.log('✅ Created index on guild_id and present_date');
+
+  // Index for user-specific queries (streak calculation)
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_presence_user_guild
+    ON presence_records(user_id, guild_id, present_date DESC)
+  `;
+  console.log('✅ Created index on user_id, guild_id, present_date');
 }
 
 async function createUserPresenceIndex(): Promise<void> {

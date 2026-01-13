@@ -12,7 +12,7 @@ export interface GuildSettings {
 }
 
 /**
- * Get guild settings
+ * Get guild settings (cached for 1 hour)
  */
 export async function getGuildSettings(guildId: string): Promise<GuildSettings | null> {
   const cacheKey = CACHE_KEYS.guildSettings(guildId);
@@ -27,9 +27,7 @@ export async function getGuildSettings(guildId: string): Promise<GuildSettings |
     WHERE guild_id = ${guildId}
   `;
 
-  if (result.length === 0) {
-    return null;
-  }
+  const settings = result.length === 0 ? null : (result[0] as GuildSettings);
 
   const settings = result[0] as GuildSettings;
   setCache(cacheKey, settings, CACHE_TTL.GUILD_SETTINGS);

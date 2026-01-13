@@ -158,10 +158,10 @@ export async function syncApiHolidays(
   
   // Insert new holidays from API
   let insertedCount = 0;
-  
+
   for (const holiday of holidays) {
     const holidayType = getHolidayType(holiday.is_national_holiday);
-    
+
     await sql`
       INSERT INTO guild_holidays (guild_id, start_date, end_date, name, type, source, created_by)
       VALUES (
